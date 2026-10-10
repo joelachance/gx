@@ -38,12 +38,6 @@ func NewRoot(ctx context.Context) *cobra.Command {
 			inference.ApplyToEnvironment()
 			return ensureAutoInitializedRepo(ctx, engine, cmd)
 		},
-		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if strings.Contains(cmd.CommandPath(), "__") {
-				return
-			}
-			maybeSelfUpdate(ctx, cmd)
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printInitNoteIfNeeded(cmd)
 			return printRootHelp(cmd)
@@ -71,7 +65,6 @@ func NewRoot(ctx context.Context) *cobra.Command {
 		newReviewCommand(ctx),
 		newEnhanceCommand(ctx),
 		newIndexCommand(ctx),
-		newUpdateCommand(ctx),
 	)
 	assignCommandGroups(root)
 	rootRef := root
@@ -98,7 +91,7 @@ func assignCommandGroups(root *cobra.Command) {
 			cmd.GroupID = groupSetup
 		case "review", "gates":
 			cmd.GroupID = groupWork
-		case "doctor", "version", "update":
+		case "doctor", "version":
 			cmd.GroupID = groupHelp
 		}
 	}
