@@ -15,7 +15,7 @@ type scriptedTransport struct {
 	stop    string // stop reason for every reply; "" means end_turn
 }
 
-func (s *scriptedTransport) complete(_ context.Context, _, system, _ string, _ int) (bedrockCompletion, error) {
+func (s *scriptedTransport) complete(_ context.Context, _, system, _ string, _ int) (modelCompletion, error) {
 	s.systems = append(s.systems, system)
 	i := len(s.systems) - 1
 	if i >= len(s.replies) {
@@ -25,7 +25,7 @@ func (s *scriptedTransport) complete(_ context.Context, _, system, _ string, _ i
 	if stop == "" {
 		stop = "end_turn"
 	}
-	return bedrockCompletion{Text: s.replies[i], StopReason: stop}, nil
+	return modelCompletion{Text: s.replies[i], StopReason: stop}, nil
 }
 
 func (s *scriptedTransport) detail() string { return "scripted" }
@@ -36,7 +36,7 @@ func TestReviewForSummaryRetriesOnceWhenReplyHasNoJSON(t *testing.T) {
 		"I reviewed the change. The file is a compiled Mach-O binary, so there is nothing to review at the source level.",
 		`{"recommendations":[]}`,
 	}}
-	r := newBedrockReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+	r := newModelReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 	out, err := r.ReviewForSummary(context.Background(), ReviewBrief{})
 	if err != nil {
 		t.Fatalf("second reply was valid JSON; want success, got %v", err)
@@ -57,7 +57,7 @@ func TestReviewForSummaryRetriesOnceWhenReplyHasNoJSON(t *testing.T) {
 
 func TestReviewForSummaryGivesUpAfterOneRetry(t *testing.T) {
 	transport := &scriptedTransport{replies: []string{"prose only", "still prose"}}
-	r := newBedrockReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+	r := newModelReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 	if _, err := r.ReviewForSummary(context.Background(), ReviewBrief{}); err == nil {
 		t.Fatalf("two unparseable replies must surface an error")
 	}
@@ -68,7 +68,7 @@ func TestReviewForSummaryGivesUpAfterOneRetry(t *testing.T) {
 
 func TestReviewForSummaryDoesNotRetryAValidFirstReply(t *testing.T) {
 	transport := &scriptedTransport{replies: []string{"```json\n{\"recommendations\":[]}\n```\n\nSome trailing summary prose."}}
-	r := newBedrockReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+	r := newModelReviewer(transport, "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 	if _, err := r.ReviewForSummary(context.Background(), ReviewBrief{}); err != nil {
 		t.Fatalf("fenced JSON with trailing prose parses today and must keep doing so: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestReviewForSummarySalvagesCompleteFindingsFromATruncatedReply(t *testing.
 		`{"title":"t2","summary":"s2","benefit":"b2","recommendation":"r2","kind":"defect","strength":"Strong","file":"b.go","line":9},` +
 		`{"title":"t3","summary":"cut off mid sen`
 	transport := &scriptedTransport{replies: []string{truncated}, stop: "max_tokens"}
-	r := newBedrockReviewer(transport, "us.anthropic.claude-sonnet-4-6")
+	r := newModelReviewer(transport, "us.anthropic.claude-sonnet-4-6")
 	out, err := r.ReviewForSummary(context.Background(), ReviewBrief{})
 	if err != nil {
 		t.Fatalf("salvageable truncation must not be an error, got %v", err)

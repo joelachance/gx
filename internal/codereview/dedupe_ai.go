@@ -54,8 +54,8 @@ type duplicateAdjudicationResponse struct {
 	Results []duplicateVerdict `json:"results"`
 }
 
-type bedrockDuplicateAdjudicator struct {
-	client *bedrockAnthropicReviewer
+type modelDuplicateAdjudicator struct {
+	client *modelReviewer
 }
 
 // duplicateAdjudicatorFromEnvWithPolicy builds the adjudicator, or nil when
@@ -65,14 +65,15 @@ func duplicateAdjudicatorFromEnv() duplicateAdjudicator {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("GX_REVIEW_DEDUPE")), "0") {
 		return nil
 	}
-	plan, err := resolveBedrockTransportPlan()
+	model := resolveJudgeModel()
+	transport, err := transportForModel(model)
 	if err != nil {
 		return nil
 	}
-	return bedrockDuplicateAdjudicator{client: newBedrockReviewer(plan.newTransport(), resolveBedrockJudgeModel())}
+	return modelDuplicateAdjudicator{client: newModelReviewer(transport, model)}
 }
 
-func (a bedrockDuplicateAdjudicator) AdjudicateDuplicates(ctx context.Context, pairs []duplicatePairInput) ([]duplicateVerdict, error) {
+func (a modelDuplicateAdjudicator) AdjudicateDuplicates(ctx context.Context, pairs []duplicatePairInput) ([]duplicateVerdict, error) {
 	if a.client == nil {
 		return nil, fmt.Errorf("duplicate adjudicator is not configured")
 	}

@@ -71,14 +71,12 @@ func testAnthropicTransport(srv *httptest.Server) *anthropicTransport {
 	return newAnthropicTransport(anthropicCredential{apiKey: "sk-ant-test"}, option.WithBaseURL(srv.URL))
 }
 
-// The panel's models are Bedrock profiles everywhere upstream, so what reaches
-// the wire has to be the Anthropic API's own name for the same model, and the
-// prompt has to arrive as the system prompt plus one user turn, as it does on
-// Bedrock.
+// The prompt has to arrive as the system prompt plus one user turn, under the
+// model's own API name, with the output cap the caller asked for.
 func TestAnthropicTransportSendsTheReviewAsOneMessagesCall(t *testing.T) {
 	srv, bodies, _ := anthropicTestServer(t, anthropicReply(http.StatusOK, anthropicMessage("end_turn", `{"findings":[]}`)))
 
-	completion, err := testAnthropicTransport(srv).complete(context.Background(), "us.anthropic.claude-sonnet-4-6", "review rules", "the diff", 6000)
+	completion, err := testAnthropicTransport(srv).complete(context.Background(), "anthropic:claude-sonnet-4-6", "review rules", "the diff", 6000)
 	if err != nil {
 		t.Fatalf("complete() error = %v", err)
 	}
@@ -87,7 +85,7 @@ func TestAnthropicTransportSendsTheReviewAsOneMessagesCall(t *testing.T) {
 	}
 	body := (*bodies)[0]
 	if body["model"] != "claude-sonnet-4-6" {
-		t.Fatalf("model = %v, want the Anthropic API ID claude-sonnet-4-6", body["model"])
+		t.Fatalf("model = %v, want claude-sonnet-4-6 with its prefix stripped", body["model"])
 	}
 	if body["max_tokens"] != float64(6000) {
 		t.Fatalf("max_tokens = %v, want 6000", body["max_tokens"])
@@ -99,9 +97,6 @@ func TestAnthropicTransportSendsTheReviewAsOneMessagesCall(t *testing.T) {
 	if len(messages) != 1 || !strings.Contains(mustJSON(messages[0]), "the diff") {
 		t.Fatalf("messages = %v, want one user turn carrying the input", body["messages"])
 	}
-	if _, ok := body["anthropic_version"]; ok {
-		t.Fatal("body carries Bedrock's anthropic_version; the API takes it as a header")
-	}
 }
 
 // A reply cut off at the cap has to read as truncated, as it does on every
@@ -109,7 +104,7 @@ func TestAnthropicTransportSendsTheReviewAsOneMessagesCall(t *testing.T) {
 func TestAnthropicTransportReportsATruncatedReply(t *testing.T) {
 	srv, _, _ := anthropicTestServer(t, anthropicReply(http.StatusOK, anthropicMessage("max_tokens", `{"findings":[`)))
 
-	completion, err := testAnthropicTransport(srv).complete(context.Background(), "us.anthropic.claude-haiku-4-5-20251001-v1:0", "", "x", 100)
+	completion, err := testAnthropicTransport(srv).complete(context.Background(), "claude-haiku-4-5", "", "x", 100)
 	if err != nil {
 		t.Fatalf("complete() error = %v", err)
 	}
@@ -152,96 +147,103 @@ func TestAnthropicTransportRetriesThrottlesButNotRejections(t *testing.T) {
 	}
 }
 
-// Every model gx ships as a default has to map onto an Anthropic API ID, and a
-// model the Anthropic API cannot serve has to say so before any call is made.
-func TestAnthropicAPIModelIDMapsTheShippedModels(t *testing.T) {
-	for _, tc := range []struct{ model, want string }{
-		{defaultBedrockReviewModelA, "claude-haiku-4-5-20251001"},
-		{defaultBedrockReviewModelB, "claude-sonnet-4-6"},
-		{defaultBedrockJudgeModel, "claude-haiku-4-5-20251001"},
-		{defaultRuleSortModel, "claude-haiku-4-5-20251001"},
-		{normalizeBedrockModelID("claude-opus-5-5"), "claude-opus-5-5"},
-		{"anthropic.claude-opus-4-6-v1", "claude-opus-4-6"},
-		{"arn:aws:bedrock:us-west-2:123456789012:inference-profile/us.anthropic.claude-sonnet-4-6", "claude-sonnet-4-6"},
+// The provider follows the model's own name, so a panel can mix the two and a
+// key only ever reaches the provider it belongs to.
+func TestModelsRouteToTheirProvider(t *testing.T) {
+	for model, openAI := range map[string]bool{
+		"claude-haiku-4-5":            false,
+		"claude-opus-5-5":             false,
+		"anthropic:claude-sonnet-4-6": false,
+		"gpt-5.6-luna":                true,
+		"openai:gpt-5.2":              true,
+		"o3":                          true,
 	} {
-		model, want := tc.model, tc.want
-		got, err := anthropicAPIModelID(model)
-		if err != nil || got != want {
-			t.Errorf("anthropicAPIModelID(%q) = %q, %v; want %q", model, got, err, want)
+		if got := modelUsesOpenAI(model); got != openAI {
+			t.Errorf("modelUsesOpenAI(%q) = %v, want %v", model, got, openAI)
 		}
 	}
-	for _, model := range []string{"zai.glm-5", "nvidia.nemotron-super-3-120b", "arn:aws:bedrock:us-west-2:123456789012:application-inference-profile/abc123"} {
-		if _, err := anthropicAPIModelID(model); err == nil || !strings.Contains(err.Error(), "not an Anthropic model") {
-			t.Errorf("anthropicAPIModelID(%q) error = %v, want it refused by name", model, err)
-		}
+	if got := apiModelName("openai:gpt-5.2"); got != "gpt-5.2" {
+		t.Fatalf("apiModelName(openai:gpt-5.2) = %q, want the prefix stripped", got)
 	}
 }
 
-// localReviewEnv is a default build: no gx Cloud and no request for AWS.
-func localReviewEnv(t *testing.T) {
+// modelKeyEnv clears every key and model override a review could find.
+func modelKeyEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("GX_HOME", t.TempDir())
-	t.Setenv("GX_CLOUD_URL", "")
-	t.Setenv("GX_REVIEW_BEDROCK_DIRECT", "")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	for _, name := range []string{
+		"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GX_REVIEW_AI",
+		"GX_REVIEW_MODELS", "GX_REVIEW_MODEL_A", "GX_REVIEW_MODEL_B", "GX_REVIEW_JUDGE_MODEL",
+	} {
+		t.Setenv(name, "")
+	}
 }
 
-func TestTransportPlanUsesTheAnthropicKeyWhenNoCloudIsConfigured(t *testing.T) {
-	localReviewEnv(t)
-	if _, err := resolveBedrockTransportPlan(); err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
-		t.Fatalf("plan with nothing configured: err = %v, want the Anthropic key named as the fix", err)
+// Either key on its own is enough for a review, and the panel follows it.
+func TestThePanelFollowsTheKeyThatIsSet(t *testing.T) {
+	modelKeyEnv(t)
+	if reason := NoReviewerReason(); !strings.Contains(reason, "ANTHROPIC_API_KEY") || !strings.Contains(reason, "OPENAI_API_KEY") {
+		t.Fatalf("NoReviewerReason() with no key = %q, want both keys named as the fix", reason)
 	}
 
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-	plan, err := resolveBedrockTransportPlan()
-	if err != nil || plan.Kind != bedrockTransportKindAnthropic {
-		t.Fatalf("plan with ANTHROPIC_API_KEY = %+v, %v; want the Anthropic wire", plan.Kind, err)
+	if a, b := resolveReviewModels(); a != defaultReviewModelA || b != defaultReviewModelB {
+		t.Fatalf("panel with ANTHROPIC_API_KEY = %q, %q; want the Claude panel", a, b)
 	}
-	if detail := plan.newTransport().detail(); !strings.Contains(detail, "Anthropic API") {
-		t.Fatalf("transport detail = %q, want it named", detail)
+	if reason := NoReviewerReason(); reason != "" {
+		t.Fatalf("NoReviewerReason() with ANTHROPIC_API_KEY = %q, want a reviewer", reason)
 	}
 
 	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "oauth-token")
-	if plan, err := resolveBedrockTransportPlan(); err != nil || plan.Kind != bedrockTransportKindAnthropic {
-		t.Fatalf("plan with ANTHROPIC_AUTH_TOKEN = %+v, %v; want the Anthropic wire", plan.Kind, err)
-	}
-}
-
-// The key is consulted only when nothing outranks it: an explicit request for
-// AWS, or a configured cloud, still decides the wire.
-func TestTransportPlanKeepsTheExplicitAndCloudWiresAheadOfTheKey(t *testing.T) {
-	localReviewEnv(t)
-	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-
-	t.Setenv("GX_REVIEW_BEDROCK_DIRECT", "1")
-	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
-	if plan, err := resolveBedrockTransportPlan(); err != nil || plan.Kind != bedrockTransportKindDirect {
-		t.Fatalf("plan with GX_REVIEW_BEDROCK_DIRECT = %+v, %v; want direct AWS", plan.Kind, err)
-	}
-
-	t.Setenv("GX_REVIEW_BEDROCK_DIRECT", "")
-	t.Setenv("GX_CLOUD_URL", "https://cloud.example.invalid")
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-	if _, err := resolveBedrockTransportPlan(); err == nil || !strings.Contains(err.Error(), "gx auth login") {
-		t.Fatalf("plan with a cloud configured and no session: err = %v, want the cloud's sign-in remedy rather than the key", err)
-	}
-}
-
-// An openai: leg never rode the Bedrock plan, so a missing plan must not take
-// it down with the others.
-func TestOpenAILegsRunWithoutATransportPlan(t *testing.T) {
-	localReviewEnv(t)
-	t.Setenv("GX_REVIEW_AI", "")
-	t.Setenv("GX_REVIEW_MODELS", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_A", "openai:gpt-5.2")
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_B", "off")
+	if a, b := resolveReviewModels(); a != defaultOpenAIReviewModelA || b != defaultOpenAIReviewModelB {
+		t.Fatalf("panel with OPENAI_API_KEY alone = %q, %q; want the OpenAI panel", a, b)
+	}
+	if judge := resolveJudgeModel(); judge != defaultOpenAIJudgeModel {
+		t.Fatalf("judge with OPENAI_API_KEY alone = %q, want %q", judge, defaultOpenAIJudgeModel)
+	}
+	if reason := NoReviewerReason(); reason != "" {
+		t.Fatalf("NoReviewerReason() with OPENAI_API_KEY = %q, want a reviewer", reason)
+	}
+
+	// Both keys: Claude, unless GX_REVIEW_MODELS says otherwise.
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	if a, _ := resolveReviewModels(); a != defaultReviewModelA {
+		t.Fatalf("leg A with both keys = %q, want the Claude panel", a)
+	}
+	t.Setenv("GX_REVIEW_MODELS", "openai")
+	if a, _ := resolveReviewModels(); a != defaultOpenAIReviewModelA {
+		t.Fatalf("leg A with GX_REVIEW_MODELS=openai = %q, want the OpenAI panel", a)
+	}
+}
+
+// A leg whose provider has no key is unavailable with that key named, and does
+// not take the other leg down with it.
+func TestALegWithoutItsKeyNamesTheKey(t *testing.T) {
+	modelKeyEnv(t)
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	t.Setenv("GX_REVIEW_MODEL_A", "claude-sonnet-4-6")
+	t.Setenv("GX_REVIEW_MODEL_B", "gpt-5.6-terra")
 
 	if reason := NoReviewerReason(); reason != "" {
-		t.Fatalf("NoReviewerReason() = %q with an openai: leg and its key, want a reviewer", reason)
+		t.Fatalf("NoReviewerReason() = %q with the OpenAI leg available, want a reviewer", reason)
+	}
+	if reason := ReviewerUnavailableReason(reviewerFromEnv()); !strings.Contains(reason, "claude-sonnet-4-6 runs on the Anthropic API, which needs ANTHROPIC_API_KEY") {
+		t.Fatalf("ReviewerUnavailableReason() = %q, want the Claude leg's missing key named", reason)
+	}
+}
+
+// The Anthropic credential can be an API key or an OAuth access token.
+func TestAnthropicCredentialAcceptsAKeyOrAToken(t *testing.T) {
+	modelKeyEnv(t)
+	if _, ok := anthropicCredentialFromEnv(); ok {
+		t.Fatal("anthropicCredentialFromEnv() found a credential in an empty environment")
+	}
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "oauth-token")
+	if cred, ok := anthropicCredentialFromEnv(); !ok || cred.authToken != "oauth-token" {
+		t.Fatalf("anthropicCredentialFromEnv() = %+v, %v; want the access token", cred, ok)
+	}
+	transport, err := transportForModel("claude-haiku-4-5")
+	if err != nil || !strings.Contains(transport.detail(), "Anthropic API") {
+		t.Fatalf("transportForModel(claude-haiku-4-5) = %v, %v; want the Anthropic wire", transport, err)
 	}
 }

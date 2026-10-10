@@ -12,7 +12,7 @@ import (
 // accordionFixture is the checkout-retry shape: one blocking finding both
 // graders agreed on, one demoted advisory, a story item, and a fix plan.
 func accordionFixture() codereview.Report {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
 	findings := codereview.AssignLanes([]codereview.Finding{
 		{
 			ID: "bedrock-a.ai.review.1", RuleID: "gx:recommended/no-secrets-in-logs",
@@ -25,7 +25,7 @@ func accordionFixture() codereview.Report {
 			ID: "bedrock-b.ai.review.2", RuleID: "gx:recommended/comments-match-code",
 			Title: "Comments must describe what the code now does", Summary: "stale comment.",
 			Recommendation: "update the comment.", Strength: "Strong",
-			Corroboration: []string{"Bedrock B"}, JudgeVerdict: "confirmed", JudgeConfidence: 0.77,
+			Corroboration: []string{"Reviewer B"}, JudgeVerdict: "confirmed", JudgeConfidence: 0.77,
 			File: "internal/checkout/session.go", Line: 71,
 		},
 	})

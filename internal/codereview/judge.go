@@ -113,8 +113,8 @@ type judgeAvailabilityReporter interface {
 	Available() bool
 }
 
-type bedrockReviewJudge struct {
-	client *bedrockAnthropicReviewer
+type modelReviewJudge struct {
+	client *modelReviewer
 }
 
 type unavailableReviewJudge struct {
@@ -186,9 +186,9 @@ type judgeResult struct {
 	// Analysis is where the judge does its thinking, and it is deliberately
 	// read into a field nothing renders.
 	//
-	// The model has no hidden reasoning channel — bedrockRequestBody carries
-	// anthropic_version, max_tokens, system and messages, and nothing else, so
-	// extended thinking is not enabled and never was. Telling it to "reason
+	// The model has no hidden reasoning channel — the request carries
+	// max_tokens, system and one user turn, and nothing else, so extended
+	// thinking is not enabled and never was. Telling it to "reason
 	// silently" therefore did not move the reasoning anywhere, it deleted it:
 	// measured across 18 paired runs of one identical 10-candidate request,
 	// output fell 24% and the confirm rate doubled from 10.0% to 20.6%, taking a
@@ -265,31 +265,29 @@ func judgeFromEnv() FindingJudge {
 	if judgeDisabledFromEnv() {
 		return nil
 	}
-	plan, err := resolveBedrockTransportPlan()
+	model := resolveJudgeModel()
+	transport, err := transportForModel(model)
 	if err != nil {
 		return unavailableReviewJudge{reason: err.Error()}
 	}
-	return bedrockReviewJudge{client: newBedrockReviewer(plan.newTransport(), resolveBedrockJudgeModel())}
+	return modelReviewJudge{client: newModelReviewer(transport, model)}
 }
 
-// resolveBedrockJudgeModel applies env > default. The reviewed repository does
-// not get a say in which model verifies the findings against it.
-func resolveBedrockJudgeModel() string {
-	return normalizeBedrockModelID(firstNonEmpty(
-		os.Getenv("GX_REVIEW_JUDGE_MODEL"),
-		presetOr(func(p modelPreset) string { return p.Judge }, defaultBedrockJudgeModel),
-	))
+// resolveJudgeModel applies env > panel. The reviewed repository does not get
+// a say in which model verifies the findings against it.
+func resolveJudgeModel() string {
+	return strings.TrimSpace(firstNonEmpty(os.Getenv("GX_REVIEW_JUDGE_MODEL"), activeModelPreset().Judge))
 }
 
 func judgeDisabledFromEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("GX_REVIEW_JUDGE")), "0")
 }
 
-func (j bedrockReviewJudge) Available() bool {
+func (j modelReviewJudge) Available() bool {
 	return j.client != nil
 }
 
-func (j bedrockReviewJudge) Judge(ctx context.Context, req judgeRequest) ([]judgeResult, error) {
+func (j modelReviewJudge) Judge(ctx context.Context, req judgeRequest) ([]judgeResult, error) {
 	if j.client == nil {
 		return nil, fmt.Errorf("review judge is not configured")
 	}
@@ -301,7 +299,7 @@ func (j bedrockReviewJudge) Judge(ctx context.Context, req judgeRequest) ([]judg
 	// which a fresh completion of the same request generally does not repeat.
 	// Measured on the benchmark runs before this: roughly one batch per 10-30
 	// PRs failed this way. Transport-level failures are retried a layer down
-	// (see bedrockRetryBackoffs); this loop is only for a call that succeeded
+	// (see modelRetryBackoffs); this loop is only for a call that succeeded
 	// and answered in the wrong shape.
 	var lastParseErr error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -543,15 +541,10 @@ func judgeAvailable(judge FindingJudge) bool {
 // bottom, because the model reads both ends hardest — and it moves the judge's
 // reasoning inside the object rather than banning it.
 //
-// The contract is not decoration. Bedrock's InvokeModel has no
-// response_format:json_object, and the two mechanisms that would enforce a shape
-// from the request side — Anthropic structured outputs and forced tool_choice —
-// are both unavailable here: the request body for the cloud transport is a fixed
-// struct that gx Cloud's /gx/bedrock/fight normalizes, so a field only the
-// direct-AWS path could send would leave the judge behaving differently
-// depending on which wire the user is on, which is precisely the split this
-// package refuses to ship. So the prompt is the enforcement, and
-// parseJudgeResponse is the seatbelt.
+// The contract is not decoration. Both wires send the same plain request —
+// system prompt, one user turn, output cap — so that a Claude judge and a GPT
+// judge behave alike; neither enforces a response shape from the request side.
+// So the prompt is the enforcement, and parseJudgeResponse is the seatbelt.
 //
 // The sentences below are aimed at an observed failure, not a hypothetical one:
 // the model answered a 24-candidate batch with 5,439 characters of prose
@@ -854,10 +847,10 @@ const defaultJudgeBatchSize = 3
 
 // maxConcurrentJudgeBatches caps how many judge calls are in flight at once.
 //
-// Smaller batches mean more of them, and the transport this runs over has no
-// retry (see cloudBedrockTransport.complete), so a throttle is not a slow
-// batch, it is a lost one. This bounds the fan-out a large review can aim at
-// Bedrock while still leaving the ordinary review fully parallel.
+// Smaller batches mean more of them, and a throttle that outlasts the wire's
+// retries is not a slow batch, it is a lost one. This bounds the fan-out a
+// large review can aim at one provider while still leaving the ordinary review
+// fully parallel.
 const maxConcurrentJudgeBatches = 6
 
 // resolveJudgeBatchSize applies env > default, so the size can be tuned

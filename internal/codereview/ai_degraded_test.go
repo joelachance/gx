@@ -36,7 +36,7 @@ func TestReviewRecordsAIReviewerFailureWithEngine(t *testing.T) {
 	gitCommit(t, root)
 	writeFile(t, root, "internal/app/app.go", "package app\nfunc Run() {}\nfunc Stop() {}\n")
 
-	engine := NewEngineWithReviewer(LocalScanner{}, StaticCatalog{}, defaultRules(), fakeRetriever{}, failingReviewer{err: errors.New("AI reviewers failed: Bedrock A: connection refused")})
+	engine := NewEngineWithReviewer(LocalScanner{}, StaticCatalog{}, defaultRules(), fakeRetriever{}, failingReviewer{err: errors.New("AI reviewers failed: Reviewer A: connection refused")})
 	report, err := engine.Review(context.Background(), root, Options{})
 	if err != nil {
 		t.Fatalf("Review() error = %v", err)
@@ -62,9 +62,9 @@ func TestReviewRecordsMissingAIConfiguration(t *testing.T) {
 	t.Setenv("GX_REVIEW_AI", "1")
 	t.Setenv("GX_REVIEW_JUDGE", "0")
 	t.Setenv("GX_REVIEW_STATIC_TOOLS", "0")
-	t.Setenv("GX_CLOUD_URL", "off")
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	root := initRepo(t)
 	writeFile(t, root, "go.mod", "module example.com/review\n")
@@ -81,10 +81,8 @@ func TestReviewRecordsMissingAIConfiguration(t *testing.T) {
 		t.Fatalf("DegradedReasons = %#v, want one warning", report.DegradedReasons)
 	}
 	reason := report.DegradedReasons[0]
-	// With no cloud configured, the fix is an Anthropic key; AWS is offered
-	// only as the explicit opt-in it is, never as ambient credentials to go
-	// find.
-	for _, want := range []string{"ANTHROPIC_API_KEY", bedrockDirectEnvVar} {
+	// The fix is a key, and the reason has to name both that would do.
+	for _, want := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"} {
 		if !strings.Contains(reason, want) {
 			t.Fatalf("DegradedReasons[0] = %q, want it to name %s", reason, want)
 		}

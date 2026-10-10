@@ -54,7 +54,7 @@ func TestGateFailuresAppliesTheThreshold(t *testing.T) {
 // The blocking level is lane-aware: quorum decides, not strength alone. Every
 // other level is unchanged and still reads strength.
 func TestGateFailuresBlockingLevelReadsLanes(t *testing.T) {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
 	report := Report{
 		ReviewMode: ReviewModeRange,
 		Reviewed:   true,
@@ -64,7 +64,7 @@ func TestGateFailuresBlockingLevelReadsLanes(t *testing.T) {
 			// Strong with quorum: two legs and confirmed → blocking lane.
 			{ID: "quorum", Strength: "Strong", Corroboration: twoLegs, JudgeVerdict: "confirmed"},
 			// Strong, one leg, confirmed → demoted to advisory.
-			{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Bedrock A"}, JudgeVerdict: "confirmed"},
+			{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Reviewer A"}, JudgeVerdict: "confirmed"},
 			// Strong, two legs, unverified → demoted to advisory.
 			{ID: "unverified", Strength: "Strong", Corroboration: twoLegs, JudgeVerdict: "unverified"},
 			// Below Strong never blocks.
@@ -98,7 +98,7 @@ func TestGateFailuresBlockingLevelComputesMissingLanes(t *testing.T) {
 		ReviewMode: ReviewModeRange,
 		Reviewed:   true,
 		Findings: []Finding{
-			{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Bedrock A"}, JudgeVerdict: "confirmed"},
+			{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Reviewer A"}, JudgeVerdict: "confirmed"},
 			{ID: "tools.static-failure", Strength: "Blocking"},
 		},
 	}

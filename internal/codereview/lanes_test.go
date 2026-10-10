@@ -3,8 +3,8 @@ package codereview
 import "testing"
 
 func TestAssignLanesDerivesLaneFromStrengthAndQuorum(t *testing.T) {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
-	oneLeg := []string{"Bedrock A"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
+	oneLeg := []string{"Reviewer A"}
 	cases := []struct {
 		name        string
 		finding     Finding

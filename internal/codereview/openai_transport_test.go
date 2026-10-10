@@ -66,26 +66,15 @@ func TestOpenAITruncationReadsAsMaxTokens(t *testing.T) {
 }
 
 // TestOpenAILegWithoutKeyIsUnavailableWithTheFix pins the failure mode: an
-// openai: leg with no OPENAI_API_KEY must read as an unavailable reviewer
+// OpenAI leg with no OPENAI_API_KEY must read as an unavailable reviewer
 // naming the variable, never as a clean review with one silent leg.
 func TestOpenAILegWithoutKeyIsUnavailableWithTheFix(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
-	_, err := newOpenAITransport()
+	_, err := newOpenAITransport("gpt-5.6-luna")
 	if err == nil {
 		t.Fatal("newOpenAITransport() succeeded without a key")
 	}
 	if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
 		t.Errorf("error %q does not name OPENAI_API_KEY", err)
-	}
-}
-
-func TestModelUsesOpenAIRouting(t *testing.T) {
-	if !modelUsesOpenAI("openai:gpt-5.2") {
-		t.Error("openai:gpt-5.2 should route to the OpenAI transport")
-	}
-	for _, m := range []string{"us.anthropic.claude-opus-4-6-v1", "zai.glm-5", "gpt-5.2"} {
-		if modelUsesOpenAI(m) {
-			t.Errorf("%q should NOT route to the OpenAI transport", m)
-		}
 	}
 }

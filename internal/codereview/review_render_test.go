@@ -9,7 +9,7 @@ import (
 // graders agreed on, one advisory finding, one demoted finding, and a story
 // with a passed rule.
 func renderFixtureReport() Report {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
 	findings := AssignLanes([]Finding{
 		{
 			ID: "bedrock-a.ai.review.1", RuleID: "gx:recommended/no-secrets-in-logs",
@@ -36,7 +36,7 @@ func renderFixtureReport() Report {
 			Title:          "Comments must describe what the code now does",
 			Summary:        "the comment predates this change — Charge retries now.",
 			Recommendation: "update the comment, or delete it.",
-			Strength:       "Strong", Corroboration: []string{"Bedrock B"}, JudgeVerdict: "confirmed", JudgeConfidence: 0.77,
+			Strength:       "Strong", Corroboration: []string{"Reviewer B"}, JudgeVerdict: "confirmed", JudgeConfidence: 0.77,
 			File: "internal/checkout/session.go", Line: 71,
 		},
 	})

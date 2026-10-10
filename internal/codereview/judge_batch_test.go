@@ -156,12 +156,12 @@ func (j abstainingJudge) Judge(_ context.Context, req judgeRequest) ([]judgeResu
 // scriptedJudgeTransport returns one canned completion per call, in order.
 type scriptedJudgeTransport struct {
 	calls       int
-	completions []bedrockCompletion
+	completions []modelCompletion
 }
 
 func (s *scriptedJudgeTransport) detail() string { return "scripted" }
 
-func (s *scriptedJudgeTransport) complete(context.Context, string, string, string, int) (bedrockCompletion, error) {
+func (s *scriptedJudgeTransport) complete(context.Context, string, string, string, int) (modelCompletion, error) {
 	if s.calls >= len(s.completions) {
 		panic("scriptedJudgeTransport: more calls than scripted completions")
 	}
@@ -178,11 +178,11 @@ func (s *scriptedJudgeTransport) complete(context.Context, string, string, strin
 // deterministic, so a single fresh completion usually recovers it.
 func TestJudgeRetriesOnceWhenTheReplyCarriesNoVerdicts(t *testing.T) {
 	valid := `{"results":[{"candidate_id":"f1","analysis":"checked","verdict":"confirmed","impact":"breaking","severity":4,"confidence":0.9,"verification_note":""}]}`
-	transport := &scriptedJudgeTransport{completions: []bedrockCompletion{
+	transport := &scriptedJudgeTransport{completions: []modelCompletion{
 		{Text: "I will look at the candidates now.", StopReason: "end_turn"},
 		{Text: valid, StopReason: "end_turn"},
 	}}
-	judge := bedrockReviewJudge{client: newBedrockReviewer(transport, "us.anthropic.claude-test")}
+	judge := modelReviewJudge{client: newModelReviewer(transport, "us.anthropic.claude-test")}
 
 	results, err := judge.Judge(context.Background(), judgeRequest{
 		Candidates: []judgeCandidate{{ID: "f1", Title: "One"}},
@@ -201,11 +201,11 @@ func TestJudgeRetriesOnceWhenTheReplyCarriesNoVerdicts(t *testing.T) {
 // Two malformed replies is a failed batch — the loop must be bounded, and the
 // error must be the parse failure so the degraded reason says what happened.
 func TestJudgeGivesUpAfterOneRetry(t *testing.T) {
-	transport := &scriptedJudgeTransport{completions: []bedrockCompletion{
+	transport := &scriptedJudgeTransport{completions: []modelCompletion{
 		{Text: "prose, no object", StopReason: "end_turn"},
 		{Text: "still prose", StopReason: "end_turn"},
 	}}
-	judge := bedrockReviewJudge{client: newBedrockReviewer(transport, "us.anthropic.claude-test")}
+	judge := modelReviewJudge{client: newModelReviewer(transport, "us.anthropic.claude-test")}
 
 	_, err := judge.Judge(context.Background(), judgeRequest{
 		Candidates: []judgeCandidate{{ID: "f1", Title: "One"}},
@@ -221,10 +221,10 @@ func TestJudgeGivesUpAfterOneRetry(t *testing.T) {
 // A reply cut at the output cap is not retried: the cap binds identically on a
 // second attempt, so the retry would spend a batch's tokens reproducing it.
 func TestJudgeDoesNotRetryTruncation(t *testing.T) {
-	transport := &scriptedJudgeTransport{completions: []bedrockCompletion{
+	transport := &scriptedJudgeTransport{completions: []modelCompletion{
 		{Text: `{"results":[{"candidate_id":"f1","ana`, StopReason: "max_tokens"},
 	}}
-	judge := bedrockReviewJudge{client: newBedrockReviewer(transport, "us.anthropic.claude-test")}
+	judge := modelReviewJudge{client: newModelReviewer(transport, "us.anthropic.claude-test")}
 
 	_, err := judge.Judge(context.Background(), judgeRequest{
 		Candidates: []judgeCandidate{{ID: "f1", Title: "One"}},
