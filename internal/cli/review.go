@@ -70,11 +70,12 @@ the verification model confirmed it — one model's opinion is advisory. Under a
 terminal the report opens as a menu; piped or in CI it prints in full. --json
 and --md are the machine and PR-comment shapes.
 
-GX_REVIEW_MODELS=<preset> swaps the whole panel — reviewers, judge, and the
-gates judge — for a named set: "default" (the shipped Claude panel),
-"budget" (Haiku + GLM 5 review, Nemotron 3 Super judges), or "glm" (GLM 5
-end to end). Any single slot's env var (GX_REVIEW_BEDROCK_MODEL_A/_B,
-GX_REVIEW_JUDGE_MODEL, GX_GATE_MODEL) still wins over the preset.`,
+gx review needs ANTHROPIC_API_KEY or OPENAI_API_KEY, and the panel follows the
+key: Claude Haiku 4.5 and Claude Sonnet 4.6 with an Anthropic key, GPT-5.6 Luna
+and GPT-5.6 Terra with only an OpenAI key. GX_REVIEW_MODELS=anthropic or
+=openai picks one when both are set. Any single slot's env var
+(GX_REVIEW_MODEL_A/_B, GX_REVIEW_JUDGE_MODEL, GX_REVIEW_RULE_SORT_MODEL) wins
+over the panel; GX_REVIEW_MODEL_B=off reviews with one model.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			startedAt := time.Now()

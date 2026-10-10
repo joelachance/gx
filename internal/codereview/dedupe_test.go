@@ -23,7 +23,7 @@ var egressA = Finding{
 	Summary: "`docs/secrets.md` documents that `run.env` is injected at 0600 inside a 0700 dir, acknowledges the guest holds the secret, and defers a proxy to 'a separate project'. Meanwhile `docs/networking.md` confirms TSI gives the guest unrestricted outbound. Together this means any agent that exfiltrates secrets cannot be detected or prevented today.",
 	Recommendation: "Add a config option `network off|on` (default `on`) that, when off, calls `krun_set_port_map` with an empty map and skips TSI in `guest/launcher/yeet-vm.c` (the API is already mentioned in docs/networking.md line 87). " +
 		"Surface a one-line warning in the output when agent secrets are injected AND networking is unrestricted.",
-	Corroboration: []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration: []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 	Anchors:       []FindingAnchor{{File: "guest/launcher/yeet-vm.c", Line: 201}},
 }
 
@@ -33,7 +33,7 @@ var egressB = Finding{
 	Summary: "The C launcher (`yeet-vm.c`) explicitly documents that TSI networking gives the guest \"unrestricted egress\" and the docs/secrets.md doc acknowledges \"the guest still holds the secret\" and calls a host-side proxy \"a separate project.\" Meanwhile, `run.env` is sourced inside the VM with the provider API key AND any agent secrets. A malicious or confused agent can trivially `curl` secrets to an external endpoint.",
 	Recommendation: "In `guest/launcher/yeet-vm.c`, after the TSI comment at line ~245, add a TODO with a concrete plan: use `krun_set_port_map` to restrict outbound to known model API hosts as a near-term step. " +
 		"Longer term, implement the filtering proxy described in docs/networking.md.",
-	Corroboration: []string{"Bedrock B (claude-opus-4-5 via AWS)"},
+	Corroboration: []string{"Reviewer B (claude-opus-4-5 via AWS)"},
 	Anchors:       []FindingAnchor{{File: "guest/launcher/yeet-vm.c", Line: 1}},
 }
 
@@ -42,7 +42,7 @@ var egressC = Finding{
 	Title:          "Unrestricted guest egress makes run.env exfiltratable despite 0600 permissions",
 	Summary:        "docs/secrets.md acknowledges this explicitly ('the guest still holds the secret… anything bridged in is exfiltratable by an agent that wants to'), and the networking doc confirms TSI gives the guest unrestricted outbound. The current mitigation is file permissions (0600/0700), which protect against other users on the host but do nothing inside the VM where the agent runs as root.",
 	Recommendation: "Add a `krun_set_port_map` call or TSI filtering proxy as described in docs/networking.md's security note. As an immediate partial mitigation, rotate `run.env` to a per-iteration nonce that the host validates via loopback.",
-	Corroboration:  []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration:  []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 }
 
 // liveEgress1/liveEgress2 are the pair a live run shipped as findings #1 and #2
@@ -54,7 +54,7 @@ var liveEgress1 = Finding{
 	Title:          "Unrestricted network egress from guest VM is a live exfiltration channel for secrets",
 	Summary:        "The secrets design doc (docs/secrets.md) explicitly acknowledges that `run.env` is inside the VM and the VM has unrestricted outbound networking via TSI, making any bridged secret exfiltratable. The launcher (`yeet-vm.c`) confirms no egress filtering is configured — `krun_add_vsock_port` is unused and there is no call to `krun_disable_implicit_vsock` or any filtering proxy. Meanwhile `loop.ts` writes the provider API key into `run.env` every iteration. A malicious or confused agent can `curl` the key to any endpoint.",
 	Recommendation: "In `guest/launcher/yeet-vm.c`, add an egress policy seam: accept a `--egress-allow` flag listing allowed destination hosts/CIDRs, and when present call `krun_set_net_filter` (or the TSI equivalent) to restrict outbound. As a first step, document the known-required destinations (OpenRouter, GitHub for git fetch) and wire the allowlist from `src/vm.ts` where `runVM` assembles the launcher args.",
-	Corroboration:  []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration:  []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "guest/launcher/yeet-vm.c", Line: 201}, {File: "docs/secrets.md", Line: 70}},
 }
 
@@ -63,7 +63,7 @@ var liveEgress2 = Finding{
 	Title:          "Unrestricted VM egress is the primary security gap — add an egress-policy seam now",
 	Summary:        "The C launcher (`yeet-vm.c`) explicitly documents unrestricted outbound networking via libkrun's TSI HIJACK_INET. The guest holds the provider API key in `run.env` and has full internet access. A misbehaving or compromised agent can exfiltrate every secret bridged into the VM. The codebase acknowledges this (docs/secrets.md \"the guest still holds the secret\") but has no filtering, no proxy, no per-run nonce, and no monitoring of egress.",
 	Recommendation: "In `src/vm.ts` (which assembles the `--env` list and calls the launcher), add a `--env HTTPS_PROXY=…` pointing at a lightweight host-side forward proxy. In the proxy, allowlist only the model-provider domains derived from `KNOWN_PROVIDERS` in `src/secrets.ts`. Gate the feature behind `yeet config egress strict`.",
-	Corroboration:  []string{"Bedrock B (claude-opus-4-5-20251101 via AWS)"},
+	Corroboration:  []string{"Reviewer B (claude-opus-4-5-20251101 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "guest/launcher/yeet-vm.c", Line: 201}, {File: "src/secrets.ts", Line: 1}},
 }
 
@@ -75,7 +75,7 @@ var bridgeStop = Finding{
 	Title:          "Race between Bridge tick and VM exit loses final events",
 	Summary:        "Bridge.stop() calls drainAgentEvents() once, but tick() is async and guarded by `this.busy`. If the timer fires one last time just before stop() is called, the `busy` flag can be true when stop() runs, causing the final drain in stop() to read from a stale offset. If the VM exits between two ticks and the guest has already deleted `agent.raw.jsonl`, the tail in stop() reads a file that no longer exists and silently returns nothing.",
 	Recommendation: "In `src/bridge.ts` Bridge.stop(), await the current tick if busy before draining. Clear the interval first, then `while (this.busy) await new Promise(r => setTimeout(r, 10));` before the final drainAgentEvents().",
-	Corroboration:  []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration:  []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "src/bridge.ts", Line: 160}},
 }
 
@@ -84,7 +84,7 @@ var bridgePoll = Finding{
 	Title:          "Bridge polling loop has no backoff and can spin on malformed request files",
 	Summary:        "In `src/bridge.ts`, the Bridge polls the `qa/` directory for `.ask.json` and `.verify.json` files using a tight `setInterval`. If a file is present but malformed, the `JSON.parse` in the polling handler throws, the file remains on disk, and the next poll interval immediately re-attempts, throwing again indefinitely.",
 	Recommendation: "In `src/bridge.ts` around line 160, after catching a JSON parse error, rename the offending file to `<name>.bad` and emit a warning event rather than silently retrying every poll tick. Add an exponential backoff counter per-file that resets on success.",
-	Corroboration:  []string{"Bedrock B (claude-opus-4-5 via AWS)"},
+	Corroboration:  []string{"Reviewer B (claude-opus-4-5 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "src/bridge.ts", Line: 160}},
 }
 
@@ -93,7 +93,7 @@ var bridgeSync = Finding{
 	Title:          "Blocking readFileSync calls inside async functions",
 	Summary:        "Multiple async code paths in src/agent.ts, src/cli.ts, src/loop.ts, and src/bridge.ts use synchronous readFileSync. Under Bun's event loop this stalls all in-flight promises, including the bridge's cost-cap ticker.",
 	Recommendation: "Change readFileSync calls in hot paths (e.g. bridge.ts:160, loop.ts:262/265/315, cli.ts:132/417) to await readFile from fs/promises. Start with bridge.ts where the loop ticks every second.",
-	Corroboration:  []string{"Bedrock B (claude-opus-4-5 via AWS)"},
+	Corroboration:  []string{"Reviewer B (claude-opus-4-5 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "src/bridge.ts", Line: 160}},
 }
 
@@ -106,7 +106,7 @@ var secretsRace = Finding{
 	Title:          "src/secrets.ts writes the key file with a permissions race",
 	Summary:        "`saveKeys` in `src/secrets.ts` writes the key file and only then sets its mode. Between those two calls the file exists with the process umask, so on a shared host another local user can read the provider keys in that window.",
 	Recommendation: "In `src/secrets.ts`, create the key file with an exclusive open at mode 0600 so the mode is applied atomically at creation, and write through the returned descriptor. Add a test asserting the mode is never world-readable at any point.",
-	Corroboration:  []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration:  []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "src/secrets.ts", Line: 66}},
 }
 
@@ -115,7 +115,7 @@ var secretsMount = Finding{
 	Title:          "src/secrets.ts keeps the key file inside a directory bind-mounted into the guest",
 	Summary:        "The key file path in `src/secrets.ts` resolves under a directory that the launcher passes to the guest as a virtio-fs mount. The agent inside the VM therefore reads the provider keys directly, whatever their mode is on the host, because inside the guest it runs as root.",
 	Recommendation: "In `src/secrets.ts`, move the key file out of the mounted tree entirely and bridge only the single provider key a run needs. Add a test that boots a VM and asserts the key file is not visible from the guest.",
-	Corroboration:  []string{"Bedrock B (claude-opus-4-5 via AWS)"},
+	Corroboration:  []string{"Reviewer B (claude-opus-4-5 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "src/secrets.ts", Line: 12}},
 }
 
@@ -127,7 +127,7 @@ var writerClose = Finding{
 	Title:          "Errors from Close are ignored in the writer",
 	Summary:        "`internal/store/writer.go` defers Close and discards its error. For a buffered file that is where a late ENOSPC surfaces, so a write that failed at the very end is reported to the caller as a success.",
 	Recommendation: "In `internal/store/writer.go`, capture the deferred Close error into the named return of the write function, and add a test using a stub whose Close fails.",
-	Corroboration:  []string{"Bedrock A (claude-opus-4-6 via AWS)"},
+	Corroboration:  []string{"Reviewer A (claude-opus-4-6 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "internal/store/writer.go", Line: 88}},
 }
 
@@ -136,7 +136,7 @@ var writerSync = Finding{
 	Title:          "Errors from Sync are ignored in the writer",
 	Summary:        "`internal/store/writer.go` defers Sync and discards its error. The data is only in the page cache when the write function reports success, so a power loss loses records the caller was told were durable.",
 	Recommendation: "In `internal/store/writer.go`, capture the deferred Sync error into the named return of the write function, and add a test using a stub whose Sync fails.",
-	Corroboration:  []string{"Bedrock B (claude-opus-4-5 via AWS)"},
+	Corroboration:  []string{"Reviewer B (claude-opus-4-5 via AWS)"},
 	Anchors:        []FindingAnchor{{File: "internal/store/writer.go", Line: 92}},
 }
 
@@ -291,7 +291,7 @@ func TestMergesSemanticDuplicatesAcrossReviewers(t *testing.T) {
 	if got := len(merged[0].Corroboration); got != 2 {
 		t.Fatalf("Corroboration = %v, want both reviewer legs", merged[0].Corroboration)
 	}
-	if !strings.Contains(merged[0].Corroboration[0], "Bedrock A") || !strings.Contains(merged[0].Corroboration[1], "Bedrock B") {
+	if !strings.Contains(merged[0].Corroboration[0], "Reviewer A") || !strings.Contains(merged[0].Corroboration[1], "Reviewer B") {
 		t.Errorf("Corroboration = %v, want one entry per leg", merged[0].Corroboration)
 	}
 	// Both reviewers' locations survive: the reader gets every place either
@@ -390,13 +390,13 @@ func TestFileGateBlocksUnrelatedFindingsThatShareVocabulary(t *testing.T) {
 		ID:            "bedrock-a.ai.1",
 		Title:         "No automated test coverage for the secrets module",
 		Summary:       "src/secrets.ts has no automated test coverage at all.",
-		Corroboration: []string{"Bedrock A"},
+		Corroboration: []string{"Reviewer A"},
 	}
 	right := Finding{
 		ID:            "bedrock-b.ai.1",
 		Title:         "No automated test coverage for the search module",
 		Summary:       "src/search.ts has no automated test coverage at all.",
-		Corroboration: []string{"Bedrock B"},
+		Corroboration: []string{"Reviewer B"},
 	}
 	adjudicator := newLabelledAdjudicator(t) // fails the test if it is consulted
 	if merged := mergeNearDuplicateFindings(context.Background(), adjudicator, []Finding{left, right}); len(merged) != 2 {
@@ -564,8 +564,8 @@ func TestAdjudicationFailureIsReportedNotSwallowed(t *testing.T) {
 // TestCorroboratedFindingOutranksSingleReviewerFinding pins the promotion. Two
 // models agreeing is evidence, and evidence should move a finding up the page.
 func TestCorroboratedFindingOutranksSingleReviewerFinding(t *testing.T) {
-	solo := Finding{ID: "bedrock-a.ai.1", Title: "Solo", Corroboration: []string{"Bedrock A"}}
-	both := Finding{ID: "bedrock-b.ai.2", Title: "Both", Corroboration: []string{"Bedrock A", "Bedrock B"}}
+	solo := Finding{ID: "bedrock-a.ai.1", Title: "Solo", Corroboration: []string{"Reviewer A"}}
+	both := Finding{ID: "bedrock-b.ai.2", Title: "Both", Corroboration: []string{"Reviewer A", "Reviewer B"}}
 	results := []judgeResult{
 		{CandidateID: "bedrock-a.ai.1", Verdict: "confirmed", Impact: impactFunctional, Confidence: 0.9},
 		{CandidateID: "bedrock-b.ai.2", Verdict: "confirmed", Impact: impactFunctional, Confidence: 0.9},
@@ -588,7 +588,7 @@ func TestPartialReviewerFailureDoesNotClaimNoAIReview(t *testing.T) {
 		ReviewMode:      ReviewModeRepo,
 		Reviewed:        true,
 		Reviewer:        "heuristic+ai",
-		DegradedReasons: []string{"one reviewer did not run — Bedrock B: decode AI review JSON"},
+		DegradedReasons: []string{"one reviewer did not run — Reviewer B: decode AI review JSON"},
 		Findings:        mergeNearDuplicateFindings(context.Background(), nil, []Finding{egressA}),
 	}
 	rendered := RenderMarkdown(report)

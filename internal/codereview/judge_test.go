@@ -14,18 +14,15 @@ func TestReviewerAvailable(t *testing.T) {
 	if reviewerAvailable(multiAIReviewer{reviewers: []namedAIReviewer{{reviewer: unavailableAIReviewer{reason: "missing"}}}}) {
 		t.Fatal("reviewerAvailable(unavailable multi) = true, want false")
 	}
-	// A leg is available when it has a wire to Bedrock, not merely when it
-	// exists: a reviewer with no transport cannot review, and reporting it as
-	// available is how a review with no reviewer reads as a clean review.
-	if reviewerAvailable(&bedrockAnthropicReviewer{model: defaultBedrockReviewModelA}) {
-		t.Fatal("reviewerAvailable(Bedrock reviewer without a transport) = true, want false")
+	// A leg is available when it has a wire to its provider, not merely when
+	// it exists: a reviewer with no transport cannot review, and reporting it
+	// as available is how a review with no reviewer reads as a clean review.
+	if reviewerAvailable(&modelReviewer{model: defaultReviewModelA}) {
+		t.Fatal("reviewerAvailable(reviewer without a transport) = true, want false")
 	}
-	withTransport := newBedrockReviewer(
-		newDirectBedrockTransport(bedrockCredentials{accessKey: "key", secretKey: "secret", region: "us-west-2"}),
-		defaultBedrockReviewModelA,
-	)
+	withTransport := newModelReviewer(newAnthropicTransport(anthropicCredential{apiKey: "sk-ant-test"}), defaultReviewModelA)
 	if !reviewerAvailable(withTransport) {
-		t.Fatal("reviewerAvailable(real Bedrock reviewer) = false, want true")
+		t.Fatal("reviewerAvailable(reviewer with a transport) = false, want true")
 	}
 	if !reviewerAvailable(fakeReviewer{}) {
 		t.Fatal("reviewerAvailable(fake without Available) = false, want true")
@@ -271,22 +268,30 @@ func TestNearDupeProviderFindingsMerge(t *testing.T) {
 	}
 }
 
-func TestNoCredentialEnvironmentDoesNotAttemptJudgeViaUnavailablePlaceholders(t *testing.T) {
+// With no key the judge is unavailable and says which keys would fix it; with
+// either key it runs on that provider's panel.
+func TestJudgeFollowsTheKeyThatIsSet(t *testing.T) {
 	t.Setenv("GX_REVIEW_JUDGE", "1")
-	t.Setenv("GX_CLOUD_URL", "off")
-	// An OPENAI_API_KEY must no longer produce a judge: the OpenAI judge is
-	// gone, and embeddings keep that variable set on most developer machines.
-	t.Setenv("OPENAI_API_KEY", "sk-embeddings-only")
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv("GX_REVIEW_JUDGE_MODEL", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	judge := judgeFromEnv()
 	if judgeAvailable(judge) {
-		t.Fatalf("judgeAvailable(%T) = true, want false with no reviewer configured", judge)
+		t.Fatalf("judgeAvailable(%T) = true, want false with no key set", judge)
 	}
 	reason, ok := judge.(unavailableReviewJudge)
-	if !ok || !strings.Contains(reason.reason, "ANTHROPIC_API_KEY") {
-		t.Fatalf("judge = %#v, want an unavailable judge naming the Anthropic key as the fix", judge)
+	if !ok || !strings.Contains(reason.reason, "ANTHROPIC_API_KEY") || !strings.Contains(reason.reason, "OPENAI_API_KEY") {
+		t.Fatalf("judge = %#v, want an unavailable judge naming both keys as the fix", judge)
+	}
+
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	judge = judgeFromEnv()
+	model, ok := judge.(modelReviewJudge)
+	if !ok || model.client.model != defaultOpenAIJudgeModel {
+		t.Fatalf("judge with only OPENAI_API_KEY = %#v, want the OpenAI panel's judge", judge)
 	}
 }
 

@@ -61,8 +61,8 @@ const (
 	// defaultFanOutConcurrency is how many shards are in flight at once.
 	// Overridable with GX_REVIEW_FANOUT_CONCURRENCY. Each shard is two
 	// concurrent model calls (one per reviewer leg), so 10 shards is up to 20
-	// in-flight Bedrock calls. Throttles this induces are absorbed by the
-	// transport's retry (see bedrockRetryBackoffs) rather than failing shards.
+	// in-flight model calls. Throttles this induces are absorbed by the
+	// transport's retry (see modelRetryBackoffs) rather than failing shards.
 	defaultFanOutConcurrency = 10
 )
 

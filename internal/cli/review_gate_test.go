@@ -248,7 +248,7 @@ func TestReviewDefaultGateIsBlocking(t *testing.T) {
 // blocking lane. A Strong finding one reviewer raised is demoted and passes;
 // the same finding raised by both reviewers and confirmed by the judge fails.
 func TestReviewGateErrorBlockingLevelReadsLanes(t *testing.T) {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
 	base := codereview.Report{
 		ReviewMode: codereview.ReviewModeRange,
 		Reviewed:   true,
@@ -256,7 +256,7 @@ func TestReviewGateErrorBlockingLevelReadsLanes(t *testing.T) {
 
 	demoted := base
 	demoted.Findings = codereview.AssignLanes([]codereview.Finding{
-		{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Bedrock A"}, JudgeVerdict: "confirmed"},
+		{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Reviewer A"}, JudgeVerdict: "confirmed"},
 	})
 	if err := reviewGateError(demoted, codereview.FailOnBlocking, true); err != nil {
 		t.Fatalf("reviewGateError(demoted Strong) = %v, want nil: one grader is advisory", err)

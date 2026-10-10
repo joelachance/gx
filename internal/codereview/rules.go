@@ -7,7 +7,7 @@ import (
 
 // Rule identity.
 //
-// A finding's ID (ai.review.3, bedrock-a.ai.review.3) is positional — "the
+// A finding's ID (ai.review.3, reviewer-a.ai.review.3) is positional — "the
 // third thing this leg said this run" — and exists so mergeFindings can
 // de-duplicate within one review. It says nothing about which *rule* the
 // finding is an instance of, so two runs that flag the same problem on the

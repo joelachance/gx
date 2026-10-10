@@ -290,10 +290,9 @@ func TestLoadReviewPolicyNeverFetchesURLsItFinds(t *testing.T) {
 // used to win over the operator's own environment variables, so a repository
 // could pick the reviewer that judged it — including a weaker one.
 func TestReviewMdCannotChooseTheReviewerOrJudgeModel(t *testing.T) {
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_A", "us.anthropic.claude-from-env-a")
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_B", "us.anthropic.claude-from-env-b")
-	t.Setenv("GX_REVIEW_ANTHROPIC_MODEL", "")
-	t.Setenv("GX_REVIEW_JUDGE_MODEL", "us.anthropic.claude-from-env-judge")
+	t.Setenv("GX_REVIEW_MODEL_A", "claude-from-env-a")
+	t.Setenv("GX_REVIEW_MODEL_B", "claude-from-env-b")
+	t.Setenv("GX_REVIEW_JUDGE_MODEL", "claude-from-env-judge")
 
 	root := t.TempDir()
 	writeFile(t, root, "REVIEW.md", strings.Join([]string{
@@ -305,11 +304,11 @@ func TestReviewMdCannotChooseTheReviewerOrJudgeModel(t *testing.T) {
 		t.Fatalf("policy = %#v, want present", policy)
 	}
 
-	modelA, modelB := resolveBedrockReviewModels()
-	if modelA != "us.anthropic.claude-from-env-a" || modelB != "us.anthropic.claude-from-env-b" {
+	modelA, modelB := resolveReviewModels()
+	if modelA != "claude-from-env-a" || modelB != "claude-from-env-b" {
 		t.Fatalf("review models = %q/%q, want the environment to decide", modelA, modelB)
 	}
-	if judge := resolveBedrockJudgeModel(); judge != "us.anthropic.claude-from-env-judge" {
+	if judge := resolveJudgeModel(); judge != "claude-from-env-judge" {
 		t.Fatalf("judge model = %q, want the environment to decide", judge)
 	}
 }
@@ -396,25 +395,16 @@ func TestReviewPolicyInfluencesReviewResourceQuery(t *testing.T) {
 	}
 }
 
-// The panel is two Bedrock legs configured from the environment, and the legs
-// stay independent: pinning one must not collapse the panel into one model
-// reviewed twice.
-func TestReviewerFromEnvBuildsTwoIndependentBedrockLegs(t *testing.T) {
+// The panel is two legs configured from the environment, each on its own
+// provider's wire, and the legs stay independent: pinning one must not collapse
+// the panel into one model reviewed twice.
+func TestReviewerFromEnvBuildsTwoIndependentLegs(t *testing.T) {
 	t.Setenv("GX_REVIEW_AI", "1")
-	// This test is about panel construction, not wire selection. Cloud is the
-	// default wire now, so reaching the direct-to-AWS legs takes an explicit
-	// opt-in — ambient AWS_* variables no longer select it.
-	t.Setenv(bedrockDirectEnvVar, "1")
-	t.Setenv("GX_OPENAI_PROXY_URL", "")
-	t.Setenv("GX_CLOUD_URL", "off")
-	t.Setenv("OPENAI_API_KEY", "openai-key")
-	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:43123")
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_A", "anthropic.claude-sonnet-4-5")
-	t.Setenv("GX_REVIEW_BEDROCK_MODEL_B", "")
-	t.Setenv("GX_REVIEW_ANTHROPIC_MODEL", "")
-	t.Setenv("AWS_ACCESS_KEY_ID", "aws-key")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
-	t.Setenv("AWS_REGION", "us-west-2")
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	t.Setenv("GX_REVIEW_MODEL_A", "gpt-5.6-terra")
+	t.Setenv("GX_REVIEW_MODEL_B", "")
 
 	reviewer := reviewerFromEnv()
 	multi, ok := reviewer.(multiAIReviewer)
@@ -422,29 +412,21 @@ func TestReviewerFromEnvBuildsTwoIndependentBedrockLegs(t *testing.T) {
 		t.Fatalf("reviewer = %T, want multiAIReviewer", reviewer)
 	}
 	if len(multi.reviewers) != 2 {
-		t.Fatalf("reviewers = %#v, want two Bedrock legs", multi.reviewers)
+		t.Fatalf("reviewers = %#v, want two legs", multi.reviewers)
 	}
-	legA, ok := multi.reviewers[0].reviewer.(*bedrockAnthropicReviewer)
-	if !ok || legA.model != "us.anthropic.claude-sonnet-4-5" {
-		t.Fatalf("leg A = %#v, want the configured model as an inference profile", multi.reviewers[0].reviewer)
+	legA, ok := multi.reviewers[0].reviewer.(*modelReviewer)
+	if !ok || legA.model != "gpt-5.6-terra" {
+		t.Fatalf("leg A = %#v, want the configured model", multi.reviewers[0].reviewer)
 	}
-	legB, ok := multi.reviewers[1].reviewer.(*bedrockAnthropicReviewer)
-	if !ok || legB.model != defaultBedrockReviewModelB {
+	if _, onOpenAI := legA.transport.(*openAITransport); !onOpenAI {
+		t.Fatalf("leg A transport = %T, want the OpenAI wire for a GPT model", legA.transport)
+	}
+	legB, ok := multi.reviewers[1].reviewer.(*modelReviewer)
+	if !ok || legB.model != defaultReviewModelB {
 		t.Fatalf("leg B = %#v, want the default second model", multi.reviewers[1].reviewer)
 	}
-	for _, leg := range []*bedrockAnthropicReviewer{legA, legB} {
-		direct, ok := leg.transport.(*directBedrockTransport)
-		if !ok {
-			t.Fatalf("leg %q transport = %T, want the direct transport when AWS credentials are set", leg.model, leg.transport)
-		}
-		if direct.region != "us-west-2" {
-			t.Fatalf("leg %q region = %q, want us-west-2", leg.model, direct.region)
-		}
-	}
-	for _, item := range multi.reviewers {
-		if _, isBedrock := item.reviewer.(*bedrockAnthropicReviewer); !isBedrock {
-			t.Fatalf("reviewers include a non-Bedrock leg %T: %#v", item.reviewer, multi.reviewers)
-		}
+	if _, onAnthropic := legB.transport.(*anthropicTransport); !onAnthropic {
+		t.Fatalf("leg B transport = %T, want the Anthropic wire for a Claude model", legB.transport)
 	}
 }
 
