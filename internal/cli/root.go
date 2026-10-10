@@ -17,7 +17,6 @@ import (
 	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/gxconfig"
 	"github.com/satoricorp/gx/internal/inference"
-	"github.com/satoricorp/gx/internal/postlist"
 	"github.com/satoricorp/gx/internal/vcs"
 	"github.com/satoricorp/gx/internal/version"
 )
@@ -168,16 +167,6 @@ func newInitCommand(ctx context.Context, engine *authoring.Engine) *cobra.Comman
 					fmt.Fprintln(cmd.OutOrStdout(), labelValue("Configured", fmt.Sprintf("gx identity as %s <%s>", result.IdentityName, result.IdentityEmail)))
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), labelValue("Using", fmt.Sprintf("gx identity %s <%s>", result.IdentityName, result.IdentityEmail)))
-				}
-				if client := postlist.NewFromEnv(); client != nil {
-					err := client.UpsertIdentity(ctx, postlist.Identity{
-						Name:      result.IdentityName,
-						Email:     result.IdentityEmail,
-						GxVersion: version.Current(),
-					})
-					if err != nil {
-						fmt.Fprintln(cmd.ErrOrStderr(), danger(fmt.Sprintf("gx signup upload failed: %v", err)))
-					}
 				}
 			}
 			installHook := installCaptureHook
