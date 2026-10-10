@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -204,24 +202,33 @@ func TestGitHubAuthError(t *testing.T) {
 	}
 }
 
-func TestNewClientUsesStoredGitHubToken(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GX_HOME", home)
+// stubGHCLI replaces the gh fallback for the test, so no test reads the
+// machine's real GitHub login.
+func stubGHCLI(t *testing.T, token string) {
+	t.Helper()
+	saved := ghCLIToken
+	ghCLIToken = func() string { return token }
+	t.Cleanup(func() { ghCLIToken = saved })
+}
+
+// The token comes from the environment first, then from the GitHub CLI's own
+// login, and with neither the error says how to provide one.
+func TestNewClientResolvesItsToken(t *testing.T) {
 	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "env-token")
+	stubGHCLI(t, "gh-cli-token")
+	if client, err := NewClient("github.com"); err != nil || client.token != "env-token" {
+		t.Fatalf("NewClient() with GITHUB_TOKEN: err = %v, want the env token used", err)
+	}
+
 	t.Setenv("GITHUB_TOKEN", "")
-	if err := os.WriteFile(filepath.Join(home, "credentials.json"), []byte(`{
-  "cloud": {
-    "token": "gx_saved_token_with_enough_length",
-    "github_access_token": "stored-github-token"
-  }
-}`), 0o600); err != nil {
-		t.Fatalf("write credentials: %v", err)
+	if client, err := NewClient("github.com"); err != nil || client.token != "gh-cli-token" {
+		t.Fatalf("NewClient() with only gh signed in: err = %v, want the gh token used", err)
 	}
-	client, err := NewClient("github.com")
-	if err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
-	if client.token != "stored-github-token" {
-		t.Fatalf("client token = %q", client.token)
+
+	stubGHCLI(t, "")
+	_, err := NewClient("github.com")
+	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN") || !strings.Contains(err.Error(), "gh auth login") {
+		t.Fatalf("NewClient() with no token: err = %v, want both fixes named", err)
 	}
 }
