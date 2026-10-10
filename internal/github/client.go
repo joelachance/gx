@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/authstore"
 )
 
 type Client struct {
@@ -73,15 +73,39 @@ func NewClient(host string) (*Client, error) {
 	return NewClientWithToken(host, token, nil), nil
 }
 
+// accessToken is the token gx comments on pull requests with: GH_TOKEN or
+// GITHUB_TOKEN when set, otherwise the GitHub CLI's own login, so anyone who
+// has run `gh auth login` needs no setup at all.
 func accessToken() (string, error) {
-	return authstore.GitHubAccessToken()
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if token := strings.TrimSpace(os.Getenv(name)); token != "" {
+			return token, nil
+		}
+	}
+	if token := ghCLIToken(); token != "" {
+		return token, nil
+	}
+	return "", tokenError()
+}
+
+// ghCLIToken asks the GitHub CLI for its token, or returns "" when gh is not
+// installed or not signed in. A variable so tests never reach the real gh: its
+// token is a live credential, and a failing assertion would print it.
+var ghCLIToken = func() string {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func tokenError() error {
-	if strings.TrimSpace(os.Getenv("GX_MCP")) != "" {
-		return fmt.Errorf("github token is not configured for MCP: run `gx auth login` in a terminal, then retry the MCP tool")
-	}
-	return fmt.Errorf("github token is not configured: run `gx auth login` or set GH_TOKEN/GITHUB_TOKEN")
+	return fmt.Errorf("github token is not configured: set GH_TOKEN or GITHUB_TOKEN, or sign in with `gh auth login`")
 }
 
 func NewClientWithToken(host, token string, httpClient *http.Client) *Client {
@@ -306,9 +330,9 @@ func (c *Client) do(req *http.Request, out any) error {
 			if err := json.Unmarshal(body, &payload); err == nil && strings.TrimSpace(payload.Message) != "" {
 				detail = strings.TrimSpace(payload.Message)
 			}
-			return fmt.Errorf("github auth failed: status %s: %s. Run `gx auth login` to refresh stored credentials or set GH_TOKEN/GITHUB_TOKEN", resp.Status, detail)
+			return fmt.Errorf("github auth failed: status %s: %s. Check GH_TOKEN/GITHUB_TOKEN, or run `gh auth login`", resp.Status, detail)
 		}
-		return fmt.Errorf("github auth failed: status %s. Run `gx auth login` to refresh stored credentials or set GH_TOKEN/GITHUB_TOKEN", resp.Status)
+		return fmt.Errorf("github auth failed: status %s. Check GH_TOKEN/GITHUB_TOKEN, or run `gh auth login`", resp.Status)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		detail := strings.TrimSpace(string(body))

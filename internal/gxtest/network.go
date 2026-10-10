@@ -91,6 +91,11 @@ func DenyNetwork() func() []string {
 	if dir, err := os.MkdirTemp("", "gx-test-home-"); err == nil {
 		_ = os.Setenv("GX_HOME", dir)
 	}
+	// The GitHub CLI's login is the fallback for GH_TOKEN, and `gh auth token`
+	// would hand a test the developer's live token. gh keeps it in the system
+	// keychain, so an empty config dir does not hide it; a default host nobody
+	// is signed in to does.
+	_ = os.Setenv("GH_HOST", "gx-test.invalid")
 	for _, key := range []string{
 		"HTTP_PROXY", "http_proxy",
 		"HTTPS_PROXY", "https_proxy",
