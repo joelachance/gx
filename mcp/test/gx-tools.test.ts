@@ -36,7 +36,7 @@ describe("gx MCP CLI invocation", () => {
   let callLog: string;
   let previousEnv: Record<string, string | undefined>;
 
-  const envKeys = ["GX_BINARY", "GX_MOCK_LOG", "GX_MOCK_AUTH_ERROR"];
+  const envKeys = ["GX_BINARY", "GX_MOCK_LOG", "GX_MOCK_KEY_ERROR"];
 
   beforeEach(async () => {
     mockDir = await mkdtemp(join(tmpdir(), "gx-mcp-tools-"));
@@ -57,8 +57,8 @@ if [ "$1" = init ]; then
   exit 0
 fi
 if [ "$1" = review ]; then
-  if [ "$GX_MOCK_AUTH_ERROR" = "1" ]; then
-    echo 'github token is not configured for MCP: run \`gx auth login\` in a terminal, then retry the MCP tool' >&2
+  if [ "$GX_MOCK_KEY_ERROR" = "1" ]; then
+    echo 'gx review cannot run: no model API key is set: set ANTHROPIC_API_KEY to review with Claude, or OPENAI_API_KEY to review with OpenAI models' >&2
     exit 1
   fi
   echo "review ok"
@@ -81,7 +81,7 @@ exit 1
 
     process.env.GX_BINARY = mockTt;
     process.env.GX_MOCK_LOG = callLog;
-    delete process.env.GX_MOCK_AUTH_ERROR;
+    delete process.env.GX_MOCK_KEY_ERROR;
   });
 
   afterEach(() => {
@@ -145,8 +145,7 @@ exit 1
     // readOnlyHint is a promise to the calling agent. Without --no-comment,
     // `gx review` posts a comment on the matching GitHub PR — a write other
     // people see, from a tool the agent was told is safe to call freely. No
-    // argument combination may drop it. The run still records to gx Cloud
-    // history, labeled with --client mcp, so per-surface counts see MCP runs.
+    // argument combination may drop it.
     const variants = [
       {},
       { repo: true },
@@ -175,19 +174,17 @@ exit 1
     expect(existsSync(join(repoRoot, ".gx-initialized"))).toBe(false);
   });
 
-  test("gx_review surfaces MCP auth login guidance", async () => {
-    process.env.GX_MOCK_AUTH_ERROR = "1";
+  test("gx_review says where an MCP server's model key goes", async () => {
+    process.env.GX_MOCK_KEY_ERROR = "1";
 
     const output = await gxReview({ cwd: repoRoot });
     const parsed = JSON.parse(output);
 
     expect(parsed.ok).toBe(false);
     expect(parsed.action).toBe("review");
-    expect(parsed.auth_required).toBe(true);
-    expect(parsed.display).toBe(
-      "gx cloud authentication is required. Run `gx auth login` in a terminal, then retry the MCP tool.",
-    );
-    expect(parsed.stderr).toContain("run `gx auth login` in a terminal");
-    expect(parsed.next_actions[0]).toBe("Run `gx auth login` in a terminal, then retry the MCP tool.");
+    expect(parsed.key_required).toBe(true);
+    expect(parsed.display).toContain("gx review needs a model API key.");
+    expect(parsed.stderr).toContain("ANTHROPIC_API_KEY");
+    expect(parsed.next_actions[0]).toContain("env block of the gx MCP server's config");
   });
 });
