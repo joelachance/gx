@@ -127,20 +127,21 @@ what you just edited, and static checks run over the repository when there is no
 The `gxr` alias runs `gx review`. The `gx_review` MCP tool is the same review from an
 agent client.
 
-## Gates: gx gates
+## Shipping: the review is the gate
 
-Before shipping a PR, run the pre-ship exit gate the same way:
+There is no `gx gates` command and no `gx_gates` MCP tool. `gx review` is the only
+pre-ship verdict, and its exit code is the gate:
 
-```bash
-GX_CLIENT=skill gx gates                       # six gates, ship/no-ship verdict
-GX_CLIENT=skill gx gates "fix auth timeout"    # state the intent for the back-pressure gate
-GX_CLIENT=skill gx gates --verbose             # list the files behind each gate
-```
+| Exit | Meaning |
+| --- | --- |
+| 0 | No finding at or above the threshold survived |
+| 3 | A finding at or above the threshold survived; the default threshold is the blocking lane |
+| 4 | Nothing was reviewed (only when `--fail-on` is passed explicitly) |
+| 5 | The review ran degraded (only when `--fail-on` is passed explicitly) |
 
-It checks correctness, security, code health, back-pressure, accessibility, and
-performance — deterministic checks first, one AI judgment call for the rest —
-and exits 0 ship / 3 no-ship / 4 nothing-to-check / 5 degraded. The `gxc` alias
-runs it; the `gx_gates` MCP tool is the same gate from an agent client.
+Before shipping, or in CI, pass the threshold explicitly, for example
+`GX_CLIENT=skill gx review --fail-on blocking`, so an empty or degraded review fails
+instead of passing quietly. `--fail-on none` turns the gate off.
 
 ## Do not
 
