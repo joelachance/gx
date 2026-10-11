@@ -14,7 +14,8 @@ func TestResolveClientSurface(t *testing.T) {
 		{name: "env", envVar: "skill", want: "skill"},
 		{name: "override wins over env", override: "mcp", envVar: "skill", want: "mcp"},
 		{name: "slash surface", envVar: "slash-gx", want: "slash-gx"},
-		{name: "slash gates surface", envVar: "slash-gates", want: "slash-gates"},
+		// /gates and its surface were retired with `gx gates`.
+		{name: "retired slash-gates surface falls back", envVar: "slash-gates", want: "cli"},
 		{name: "whitespace trimmed", envVar: "  mcp  ", want: "mcp"},
 		// Unknown values fall through the chain instead of minting a new
 		// history category.
