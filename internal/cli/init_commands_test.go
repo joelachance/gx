@@ -145,26 +145,33 @@ func TestInstallSlashCommandsRefreshesManagedFile(t *testing.T) {
 }
 
 func TestInstallSlashCommandsRemovesRenamedPredecessor(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".claude", "commands")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// A file this tool installed under the old name, carrying our marker.
-	legacy := filepath.Join(dir, "better-review.md")
-	if err := os.WriteFile(legacy, []byte(slashCommandMarker+"\n\nold command\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// better-review was renamed to gx; gates was retired into it with
+	// `gx gates`. Either one left behind is a second command that no longer
+	// does what it says.
+	for _, name := range []string{"better-review", "gates"} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			dir := filepath.Join(home, ".claude", "commands")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// A file this tool installed under the old name, carrying our marker.
+			legacy := filepath.Join(dir, name+".md")
+			if err := os.WriteFile(legacy, []byte(slashCommandMarker+"\n\nold command\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
-	if _, err := installSlashCommands(); err != nil {
-		t.Fatal(err)
-	}
-	if _, statErr := os.Stat(legacy); !os.IsNotExist(statErr) {
-		t.Error("renamed predecessor should be removed, leaving one command not two")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "gx.md")); err != nil {
-		t.Errorf("current command missing: %v", err)
+			if _, err := installSlashCommands(); err != nil {
+				t.Fatal(err)
+			}
+			if _, statErr := os.Stat(legacy); !os.IsNotExist(statErr) {
+				t.Errorf("%s.md should be removed, leaving one command not two", name)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "gx.md")); err != nil {
+				t.Errorf("current command missing: %v", err)
+			}
+		})
 	}
 }
 

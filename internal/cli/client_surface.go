@@ -10,11 +10,10 @@ import (
 // arbitrary environment string would let one misconfigured machine mint
 // unbounded new categories.
 var clientSurfaces = map[string]bool{
-	"cli":         true,
-	"mcp":         true,
-	"skill":       true,
-	"slash-gx":    true,
-	"slash-gates": true,
+	"cli":      true,
+	"mcp":      true,
+	"skill":    true,
+	"slash-gx": true,
 }
 
 // resolveClientSurface resolves which surface invoked this run: an explicit
