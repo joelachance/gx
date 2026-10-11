@@ -13,5 +13,5 @@ Leave out a generated summary; gx appends one after the PR opens.
 
 - [ ] `go test ./...` passes
 - [ ] `gofmt -l .` prints nothing
-- [ ] New tests seed through production writers (see CONTRIBUTING.md)
+- [ ] New tests seed through production writers (see the Contributing section of README.md)
 - [ ] Commits are signed off (`git commit -s`)
