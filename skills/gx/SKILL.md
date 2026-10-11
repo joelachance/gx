@@ -127,22 +127,6 @@ what you just edited, and static checks run over the repository when there is no
 The `gxr` alias runs `gx review`. The `gx_review` MCP tool is the same review from an
 agent client.
 
-## Shipping: the review is the gate
-
-There is no `gx gates` command and no `gx_gates` MCP tool. `gx review` is the only
-pre-ship verdict, and its exit code is the gate:
-
-| Exit | Meaning |
-| --- | --- |
-| 0 | No finding at or above the threshold survived |
-| 3 | A finding at or above the threshold survived; the default threshold is the blocking lane |
-| 4 | Nothing was reviewed (only when `--fail-on` is passed explicitly) |
-| 5 | The review ran degraded (only when `--fail-on` is passed explicitly) |
-
-Before shipping, or in CI, pass the threshold explicitly, for example
-`GX_CLIENT=skill gx review --fail-on blocking`, so an empty or degraded review fails
-instead of passing quietly. `--fail-on none` turns the gate off.
-
 ## Do not
 
 - `gx commit` / `gx status` / `gx push` / `gx edit` — removed. Use `git commit`,

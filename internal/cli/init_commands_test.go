@@ -145,9 +145,6 @@ func TestInstallSlashCommandsRefreshesManagedFile(t *testing.T) {
 }
 
 func TestInstallSlashCommandsRemovesRenamedPredecessor(t *testing.T) {
-	// better-review was renamed to gx; gates was retired into it with
-	// `gx gates`. Either one left behind is a second command that no longer
-	// does what it says.
 	for _, name := range []string{"better-review", "gates"} {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
