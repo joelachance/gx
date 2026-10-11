@@ -33,9 +33,7 @@ func slashCommands() []slashCommand {
 			argumentHint: "[optional reviewer prompt]",
 			bodyArgs:     slashGxBodyArgs,
 			bodyPlain:    slashGxBodyPlain,
-			// /gates ran the retired `gx gates` exit gate; review owns the
-			// ship verdict now, so /gx is its successor and the stale file goes.
-			legacyNames: []string{"better-review", "gates"},
+			legacyNames:  []string{"better-review", "gates"},
 		},
 	}
 }
