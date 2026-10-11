@@ -46,9 +46,7 @@ export default async function gxReview(params: InferSchema<typeof schema>) {
   // write to a pull request other people read — and an agent calling it for
   // context mid-codegen would comment on the PR every time it asked a
   // question. Commenting is a deliberate act that belongs to the CLI, where a
-  // human typed the command. The run itself still records to gx Cloud history
-  // (unlike --no-publish, which suppresses that too) so MCP reviews count in
-  // per-surface usage; --client mcp labels the row.
+  // human typed the command.
   //
   // There is deliberately no `fast` parameter. It used to be exposed here, and
   // its description told the caller to use it "for interactive reviews someone
@@ -65,7 +63,7 @@ export default async function gxReview(params: InferSchema<typeof schema>) {
   // false and all three real ones filed under "worth exploring".
   //
   // --fast still exists on the CLI, where a human choosing it knows the trade.
-  const args = ["review", "--no-comment", "--client", "mcp"];
+  const args = ["review", "--no-comment"];
   if (params.scope) {
     args.push("--scope", params.scope);
   }

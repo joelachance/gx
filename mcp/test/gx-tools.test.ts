@@ -111,8 +111,6 @@ exit 1
       process.env.GX_BINARY,
       "review",
       "--no-comment",
-      "--client",
-      "mcp",
       "--scope",
       "architecture",
       "--focus",
@@ -125,7 +123,7 @@ exit 1
     const calls = await readFile(callLog, "utf8");
     expect(calls).toContain("gx|");
     expect(calls).toContain(
-      "|1|review --no-comment --client mcp --scope architecture --focus internal/authoring --deep --verbose review auth rollback risk",
+      "|1|review --no-comment --scope architecture --focus internal/authoring --deep --verbose review auth rollback risk",
     );
   });
 
@@ -134,11 +132,11 @@ exit 1
     // an agent asking about the codebase gets an answer scoped to the diff.
     const output = await gxReview({ cwd: repoRoot, repo: true });
     const parsed = JSON.parse(output);
-    expect(parsed.command).toEqual([process.env.GX_BINARY, "review", "--no-comment", "--client", "mcp", "--repo"]);
+    expect(parsed.command).toEqual([process.env.GX_BINARY, "review", "--no-comment", "--repo"]);
 
     // Omitting it keeps the patch-focused default.
     const plain = JSON.parse(await gxReview({ cwd: repoRoot }));
-    expect(plain.command).toEqual([process.env.GX_BINARY, "review", "--no-comment", "--client", "mcp"]);
+    expect(plain.command).toEqual([process.env.GX_BINARY, "review", "--no-comment"]);
   });
 
   test("gx_review never comments on a PR, whatever it is asked for", async () => {
@@ -155,7 +153,6 @@ exit 1
     for (const variant of variants) {
       const parsed = JSON.parse(await gxReview({ cwd: repoRoot, ...variant }));
       expect(parsed.command).toContain("--no-comment");
-      expect(parsed.command).toContain("--client");
     }
   });
 

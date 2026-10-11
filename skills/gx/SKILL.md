@@ -148,12 +148,11 @@ runs it; the `gx_gates` MCP tool is the same gate from an agent client.
 - `gx capture push` or any manual capture/attach step — the pre-push hook captures and
   publishes on `git push`, and provenance is inferred automatically.
 - Hidden utilities such as `gx base`, `gx generate`, or `gx sync` — removed; use plain
-  Git (`git pull --rebase`, `git checkout -b`) instead. Queued uploads retry on the next
-  `git push`, and `gx doctor` shows and drains the upload outbox.
+  Git (`git pull --rebase`, `git checkout -b`) instead.
 - `gx demo` and `gx ops` — removed. There is no walkthrough, and `gx ops diagnose doctor`
   was only ever `gx doctor` under another name; run `gx doctor`.
-- `gx report` — folded into `gx doctor --report`, which diagnoses first and then sends
-  that diagnosis with recent logs to support.
+- `gx report`, `gx doctor --report`, `gx auth` and `gx update` — removed with gx Cloud;
+  gx runs locally, and `gx doctor` shows its state.
 - Declaring provenance by hand (self-reports, task summaries) — there is no such channel;
   sessions are matched to changed hunks automatically.
 
@@ -162,8 +161,8 @@ runs it; the `gx_gates` MCP tool is the same gate from an agent client.
 | Symptom | Fix |
 | --- | --- |
 | `git commit` says "nothing to commit" | Nothing staged — run `git add <files>` first |
-| `gx review cannot run` / "no model is configured" | Ask the user to set `ANTHROPIC_API_KEY` (or `GX_REVIEW_BEDROCK_DIRECT=1` with AWS credentials), then retry |
-| Error mentions `gx auth login` | The installed gx is an older build that expects a gx Cloud; ask the user to run `gx update` |
+| `gx review cannot run` / "no model API key is set" | Ask the user to set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, then retry |
+| Error mentions `gx auth login` | The installed gx is an older build that expects a gx Cloud; ask the user to reinstall gx from source or a GitHub release |
 | `git push` fails: no `origin` / not a GitHub remote | `git remote -v`; point `origin` at GitHub, or skip publishing |
 | `git push` rejected (remote moved) | `git pull --rebase`, then retry `git push` |
 | Repo not initialized errors | `gx init -y`, then retry |

@@ -11,25 +11,15 @@ Default flow:
 
 For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.
 
-## Installing: `just install`, never a bare `go build` onto PATH
+## Installing: `just install`
 
-Install with `just install`. Never write to `~/.local/bin/gx` (or anywhere on PATH)
-with `go build -o` or `go install`: `just install` stamps the version, installs
-completions, codesigns on macOS, and runs `just verify-bake` against both the built
-and the installed binary.
+Install with `just install`, which builds with the version stamped, codesigns on
+macOS, and installs completions. A bare `go build` works but leaves `gx version`
+printing `dev`, which is the tell for an unstamped build.
 
-There is no gx Cloud, so the default is a local build: with no endpoints in `.env`,
-gx runs entirely on the machine and its cloud code stays dormant. `verify-bake`
-matters only once endpoints are set. `GX_CLOUD_URL`, `GITHUB_CLIENT_ID` and
-`CONVEX_SITE_URL` are all or nothing, and it refuses a binary that carries only some
-of them, because that failure is silent. A build meant for a cloud but missing its
-URL behaves exactly like a local one: pushes look normal, nothing is published, and
-nothing says so. While gx Cloud existed, a bare build cost a week of PR summaries
-in August 2026 that way. `gx version` printing `dev` instead of a commit sha is the
-tell for an unstamped build.
-
-`just` reads `.env` from parent directories too, so every worktree under
-`.claude/worktrees` builds with the main checkout's `.env`.
+There is no gx Cloud and no download site: gx runs entirely on the machine with
+the user's own model keys, and releases are GitHub Release assets built on `v*`
+tags.
 
 ## Tests: seed through the writer production uses, or do not seed
 

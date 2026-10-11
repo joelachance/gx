@@ -100,7 +100,7 @@ func printRootIntro(out io.Writer) {
 func rootInferenceStatusLine() string {
 	creds, ok := inference.Resolve()
 	if !ok {
-		return danger("●") + " " + muted("API Key required. Set ANTHROPIC_API_KEY to review with a model.")
+		return danger("●") + " " + muted("API Key required. Set ANTHROPIC_API_KEY or OPENAI_API_KEY to review with a model.")
 	}
 	return success("●") + " " + value("Using "+creds.Provider+": "+maskedAPIKey(creds.APIKey))
 }

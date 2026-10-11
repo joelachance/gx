@@ -12,7 +12,7 @@ and the advisory is published once users have had a chance to update.
 
 ## Supported versions
 
-Only the latest release receives security fixes. `gx update` installs it.
+Only the latest release receives security fixes.
 
 ## Scope
 
@@ -20,13 +20,12 @@ In scope:
 
 - The `gx` CLI and its git hooks
 - The `gx-mcp` MCP server and the `@satoricorp/gx` npm package
-- The install script served from `download.gx.run`
 - Session capture, including the redaction that runs before a transcript is
-  staged for upload
+  staged
 
 Session capture is the most sensitive surface. Transcripts can contain
 anything an AI agent saw, so gx redacts known secret shapes from session events
-before it stages them for upload: AWS access keys, GitHub and Slack tokens,
+before it stages them: AWS access keys, GitHub and Slack tokens,
 bearer tokens, API-key and password assignments, private keys, and long
 high-entropy strings. A secret that survives redaction and reaches an upload is
 a vulnerability. Please report it here.
