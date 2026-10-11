@@ -9,7 +9,6 @@ import (
 
 	"github.com/satoricorp/gx/internal/capture/orchestrator"
 	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/storage"
 )
 
 // TestCapturePushSurfacesHookError pins the diagnostic contract of the push
@@ -96,71 +95,5 @@ func TestCapturePushDistinguishesSkipsFromFailures(t *testing.T) {
 	}
 	if stderr.String() != "" {
 		t.Fatalf("stderr = %q, want an opt-out to warn about nothing", stderr.String())
-	}
-}
-
-// TestCapturePushSurfacesFailingUploads is the last link in the only chain by
-// which a failed upload can reach a human: `gx capture sync` runs detached with
-// both streams on os.DevNull, so the push that starts it cannot report its
-// result and the next push has to. Without this, 32 rows could 400 on every
-// push for weeks behind a clean-looking capture line.
-func TestCapturePushSurfacesFailingUploads(t *testing.T) {
-	restore := runPushHook
-	runPushHook = func(context.Context, hooks.PushOptions) (hooks.PushOutcome, error) {
-		return hooks.PushOutcome{
-			Result: orchestrator.Result{StagedExtractID: "ext-1"},
-			UploadFailures: storage.CaptureUploadFailures{
-				Sessions:      32,
-				ExhaustedRows: 32,
-				LastError:     `status 400: {"error":"sessionId, tool, and content are required"}`,
-			},
-		}, nil
-	}
-	t.Cleanup(func() { runPushHook = restore })
-
-	var stdout, stderr bytes.Buffer
-	cmd := newCapturePushCommand(context.Background())
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs(nil)
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stderr.String(), "32 capture upload(s) failed") {
-		t.Fatalf("stderr = %q, want the failing uploads reported", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "sessionId, tool, and content are required") {
-		t.Fatalf("stderr = %q, want the server's own reason readable", stderr.String())
-	}
-}
-
-// TestCapturePushSurfacesDroppedWork covers the two errors the hook used to
-// discard outright: a failed shareable-marking pass, and a publication that was
-// never enqueued. Both leave the push looking successful while the PR silently
-// gets no gx artifact and the staged rows never upload.
-func TestCapturePushSurfacesDroppedWork(t *testing.T) {
-	restore := runPushHook
-	runPushHook = func(context.Context, hooks.PushOptions) (hooks.PushOutcome, error) {
-		return hooks.PushOutcome{
-			Result:           orchestrator.Result{StagedExtractID: "ext-1"},
-			ShareableError:   "database is locked",
-			PublicationError: "resolve head commit: fatal: bad object",
-		}, nil
-	}
-	t.Cleanup(func() { runPushHook = restore })
-
-	var stdout, stderr bytes.Buffer
-	cmd := newCapturePushCommand(context.Background())
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs(nil)
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stderr.String(), "database is locked") {
-		t.Fatalf("stderr = %q, want the marking failure reported", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "queued no gx review artifact") {
-		t.Fatalf("stderr = %q, want the missing publication reported", stderr.String())
 	}
 }

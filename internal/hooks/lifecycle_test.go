@@ -272,12 +272,9 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 		t.Fatalf("change was not stale before recovery: %+v, %v", staleChange, err)
 	}
 
-	t.Setenv(hooks.SuppressAdoptedPublicationEnv, "1")
 	outcome, err := hooks.RunPush(context.Background(), hooks.PushOptions{
 		RepoRoot:    linked,
 		RefRange:    missedOID,
-		HeadSHA:     missedOID,
-		LocalRef:    "refs/heads/linked",
 		SkipCapture: true,
 	})
 	if err != nil {

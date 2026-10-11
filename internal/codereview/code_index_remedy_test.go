@@ -36,13 +36,10 @@ func TestMissingIndexWarningsCarryTheirRemedy(t *testing.T) {
 		t.Fatalf("EvidenceWarnings() = %#v, want one warning for the one source", warnings)
 	}
 	warning := warnings[0]
-	if !strings.Contains(warning, "https://gx.run/repositories") {
-		t.Fatalf("warning = %q, want it to say where to get the repository indexed", warning)
+	if !strings.Contains(warning, "gx index") {
+		t.Fatalf("warning = %q, want it to say how to get the repository indexed", warning)
 	}
-	if strings.Contains(warning, "gx index") {
-		t.Fatalf("warning = %q, want the website rather than the hidden `gx index` command", warning)
-	}
-	if count := strings.Count(warning, "https://gx.run/repositories"); count != 1 {
+	if count := strings.Count(warning, "gx index"); count != 1 {
 		t.Fatalf("warning states the remedy %d times, want once:\n%s", count, warning)
 	}
 }
@@ -56,8 +53,8 @@ func TestEveryMissingCodeIndexOriginHasARemedy(t *testing.T) {
 		"some-future-origin",
 	} {
 		target := codeIndexTarget{Origin: origin}
-		if remedy := codeIndexMissingRemedy(target); !strings.Contains(remedy, "https://gx.run/repositories") {
-			t.Errorf("origin %q remedy = %q, want it to point at the console", origin, remedy)
+		if remedy := codeIndexMissingRemedy(target); !strings.Contains(remedy, "gx index") {
+			t.Errorf("origin %q remedy = %q, want it to name `gx index`", origin, remedy)
 		}
 		if detail := codeIndexMissingDetail(target); strings.TrimSpace(detail) == "" {
 			t.Errorf("origin %q has no detail", origin)

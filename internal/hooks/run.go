@@ -2,51 +2,33 @@ package hooks
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/background"
 	"github.com/satoricorp/gx/internal/capture"
 	"github.com/satoricorp/gx/internal/capture/matcher"
 	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/capture/repobind"
-	"github.com/satoricorp/gx/internal/cloud"
-	"github.com/satoricorp/gx/internal/publication"
-	"github.com/satoricorp/gx/internal/storage"
 	"github.com/satoricorp/gx/internal/vcs"
 )
-
-// SuppressAdoptedPublicationEnv tells the pre-push hook that gx push owns
-// this push and will enqueue the publication itself.
-const SuppressAdoptedPublicationEnv = "GX_SUPPRESS_ADOPTED_PUBLICATION"
 
 // runCapture is a seam for tests that need one specific orchestrator outcome —
 // above all a partial failure, which returns a populated Result *and* an error
 // and is otherwise hard to produce on demand.
 var runCapture = orchestrator.Run
 
-// markCaptureShareable and revisionIDsInGitRange are seams for tests. Both
-// failure modes are real — SQLite busy against the detached sync writer, a git
-// invocation that fails mid-push — and both used to abort the rest of the hook,
-// which is precisely what needs covering; neither is reachable on demand
-// without racing SQLite or corrupting a repo mid-run.
-var markCaptureShareable = markShareable
-
+// revisionIDsInGitRange is a seam for tests: a git invocation that fails
+// mid-push is real, used to abort the rest of the hook, and is not reachable on
+// demand without corrupting a repo mid-run.
 var revisionIDsInGitRange = vcs.RevisionIDsInGitRange
 
 // PushOptions configures a hook-triggered capture run.
 type PushOptions struct {
 	RepoRoot    string
-	Remote      string
 	RefRange    string
 	Base        string
 	Head        string
-	LocalRef    string
-	HeadSHA     string
 	HomeDir     string
 	Tools       []string
 	SkipCapture bool
@@ -61,37 +43,23 @@ type PushOptions struct {
 // line — the same line a genuine error prints. An empty extract id has to mean
 // one thing.
 //
-// UploadFailures reports rows whose last upload attempt failed. Uploads run in
-// a detached process with both streams sent to /dev/null, so the push that
-// starts one can never report its result; the push after it reports what the
-// previous one left behind.
-//
 // AttachError reports a failure to link this push's sessions to their change
 // rows. It is never returned: a push must not fail because SQLite was busy.
-// But it must not be silent either — an empty sessions[] in the published
-// artifact is exactly the symptom that hid the commit-time matcher's
-// self-referential gate for 174 bundles.
+// But it must not be silent either — sessions that silently fail to attach
+// hid the commit-time matcher's self-referential gate for 174 pushes.
 type PushOutcome struct {
 	Result           orchestrator.Result
 	RevisionIDs      []string
 	SkipReason       string
 	CaptureError     string
 	RecoveryError    string
-	ShareableError   string
 	AttachError      string
-	PublicationError string
-	ShareableExtract int
-	ShareableSession int
-	// WithheldSessions counts sessions this push staged but did not make
-	// shareable because they belong to a different repository.
-	WithheldSessions int
 	AttachedSessions int
-	UploadFailures   storage.CaptureUploadFailures
-	Publication      publication.Result
 }
 
-// RunPush executes capture staging, shareable marking, and background upload kickoff.
-// It always returns a nil error so git pre-push hooks never block pushes on network.
+// RunPush captures the coding sessions behind a push and links them to the
+// commits they wrote, all in ~/.gx. It always returns a nil error so git
+// pre-push hooks never block a push.
 func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 	outcome := PushOutcome{}
 	homeDir := opts.HomeDir
@@ -145,10 +113,10 @@ func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 		})
 		// The orchestrator returns a populated Result alongside its error: a run
 		// that staged the extract and then failed on one session has produced
-		// real, uploadable rows. Keeping the Result on both branches is what
-		// lets the steps below still mark those rows shareable and put them in
-		// the publish bundle. Dropping it made a partial failure look like a
-		// total no-op, which is the "silent staging" symptom.
+		// real rows and hunk links. Keeping the Result on both branches is what
+		// lets the steps below still attach those sessions. Dropping it made a
+		// partial failure look like a total no-op, which is the "silent
+		// staging" symptom.
 		outcome.Result = result
 		if err != nil {
 			// The hook must never block a push, but a failed capture run must
@@ -167,11 +135,8 @@ func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 	}
 	revisionIDs, err := revisionIDsInGitRange(ctx, repoRoot, refRange)
 	if err != nil {
-		// Revisions are a backlog convenience, not a prerequisite: the rows
-		// this run staged are addressed by id. Returning here also skipped the
-		// publication and the upload kickoff, so a trailer-scan hiccup left the
-		// PR with no gx artifact at all and nothing said so. Carry on with no
-		// revisions and report the scan failure.
+		// Revisions are a backlog convenience, not a prerequisite. Carry on
+		// with no revisions and report the scan failure.
 		outcome.RecoveryError = fmt.Sprintf("scan gx revision trailers: %v", err)
 		revisionIDs = nil
 	}
@@ -187,82 +152,19 @@ func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 		}
 	}
 
-	// Placement is load-bearing. RecoverMissingRevisions above guarantees the
-	// `changes` rows this links to exist, and EnqueueAdoptedPublication below
-	// runs reviewbundle.BuildPush synchronously in this same process — so the
-	// artifact this very push writes already carries the sessions. Running it
-	// before the SuppressAdoptedPublication early return covers `gx push`,
-	// which builds its own artifact from the same rows.
+	// Placement is load-bearing: RecoverMissingRevisions above guarantees the
+	// `changes` rows this links to exist.
 	if attached, err := attachPushSessions(ctx, repoRoot, outcome.Result.HunkLinks); err != nil {
 		outcome.AttachError = err.Error()
 	} else {
 		outcome.AttachedSessions = attached
 	}
 
-	if err := markCaptureShareable(ctx, repoRoot, &outcome, revisionIDs); err != nil {
-		// SQLite is WAL with a 5s busy timeout and a detached sync from the
-		// previous push writes the same tables, so this genuinely happens.
-		// Aborting here skipped the publication and the upload kickoff too and
-		// rendered as `shareable=0/0` with no warning: the exact silent
-		// staging this marking exists to eliminate.
-		outcome.ShareableError = err.Error()
-	}
-
-	// Read after marking and before kicking off the next sync, so what is
-	// reported is what the previous detached sync actually left behind.
-	if failures, err := storage.CaptureUploadFailureCounts(ctx); err == nil {
-		outcome.UploadFailures = failures
-	}
-
-	// With no gx Cloud configured there is nowhere to publish to, so capture
-	// is the whole of a push. This used to queue the review artifact anyway and
-	// warn that it would never upload. On a local build, which is every source
-	// build and every release since gx Cloud went away, that meant a warning on
-	// every push and an outbox nothing would ever drain.
-	if !cloud.CloudConfigured() {
-		return outcome, nil
-	}
-
-	if os.Getenv(SuppressAdoptedPublicationEnv) != "" {
-		// gx push drives this git push and enqueues its own artifact with
-		// the PR URL attached; a hook publication here would race it with
-		// a PR-less artifact for the same head.
-		if backgroundWorkersEnabled() {
-			_ = background.StartDetachedGx("capture", "sync", "--quiet")
-		}
-		return outcome, nil
-	}
-
-	headSHA := strings.TrimSpace(opts.HeadSHA)
-	if headSHA == "" && head != "" {
-		headSHA, _ = gitRevParse(ctx, repoRoot, head)
-	}
-	pub, err := EnqueueAdoptedPublication(ctx, AdoptPushOptions{
-		RepoRoot: repoRoot,
-		Remote:   opts.Remote,
-		LocalRef: opts.LocalRef,
-		HeadSHA:  headSHA,
-		RefRange: refRange,
-	})
-	if err == nil {
-		outcome.Publication = pub
-	} else {
-		// Without this the PR simply never grows a gx summary and nothing
-		// anywhere says why.
-		outcome.PublicationError = err.Error()
-	}
-
-	if backgroundWorkersEnabled() {
-		_ = background.StartDetachedGx("capture", "sync", "--quiet")
-		if shouldStartOutboxWorker(pub.Queued) {
-			_ = background.StartDetachedGx("__gx-upload-outbox", "--quiet")
-		}
-	}
 	return outcome, nil
 }
 
 // attachPushSessions links the sessions this push's hunk links name to the
-// change rows they edited, so the artifact built moments later carries them.
+// change rows they edited.
 func attachPushSessions(ctx context.Context, repoRoot string, links []matcher.HunkLink) (int, error) {
 	if len(links) == 0 {
 		return 0, nil
@@ -273,91 +175,6 @@ func attachPushSessions(ctx context.Context, repoRoot string, links []matcher.Hu
 		return 0, err
 	}
 	return service.AttachSessionsFromHunkLinks(ctx, repo, links)
-}
-
-// markShareable attests the capture rows this push may upload.
-//
-// The staged row ids are the load-bearing gate: they name the exact rows this
-// run wrote, with no dependence on resolving a revision. Revision matching runs
-// afterwards for the backlog — rows staged by an earlier run whose revisions
-// only now reach the remote — and still works, since a repo with the gx
-// prepare-commit-msg hook stamps a trailer on plain `git commit`. Rows the id
-// pass already marked are excluded from the second pass's count.
-//
-// Every marking failure is collected and returned. Discarding them made a
-// failed marking pass indistinguishable from a successful one that had nothing
-// to mark.
-func markShareable(ctx context.Context, repoRoot string, outcome *PushOutcome, revisionIDs []string) error {
-	att, _ := gitCaptureAttestation(ctx, repoRoot)
-	stager, err := storage.OpenCaptureStager(ctx)
-	if err != nil {
-		return err
-	}
-	var problems []error
-	count := func(n int, err error) int {
-		if err != nil {
-			problems = append(problems, err)
-			return 0
-		}
-		return n
-	}
-	// A session bound to a different repository is not this repository's to
-	// share. Discovery deliberately casts a wide net — any transcript that
-	// mentions this repo's path is a candidate — and content matching used to
-	// be the only thing throwing the others back. Binding is the gate that
-	// does not depend on whether a session's work was committed or matched.
-	//
-	// Only sessions bound *elsewhere* are withheld. A session with no binding
-	// keeps the previous behavior, so this can only ever share less.
-	shareableIDs, withheld := sessionsForThisRepo(ctx, stager, cloud.ConnectedOrigins, repoRoot, outcome.Result.StagedSessionIDs)
-	outcome.WithheldSessions += withheld
-
-	outcome.ShareableExtract += count(stager.MarkExtractsShareableByID(ctx, outcome.Result.StagedExtractIDs, att))
-	outcome.ShareableSession += count(stager.MarkSessionsShareableByID(ctx, shareableIDs, att))
-	// Rows left behind by the older row-key scheme describe the very same
-	// transcripts this run just staged, so they carry the same attestation
-	// rather than sitting unshareable for the rest of time.
-	outcome.ShareableSession += count(stager.MarkSessionsShareableForSourcesOf(ctx, shareableIDs, att))
-	outcome.ShareableExtract += count(stager.MarkExtractShareable(ctx, revisionIDs, att))
-	outcome.ShareableSession += count(stager.MarkSessionShareable(ctx, revisionIDs, att))
-	return errors.Join(problems...)
-}
-
-// shouldStartOutboxWorker decides whether this push spawns the publish-outbox
-// worker. It is not gated on the current push having enqueued something: with
-// `gx sync` retired, the pre-push hook is the retry path for items that failed
-// or were left pending by an earlier push, so any backlog also spawns the
-// worker.
-func shouldStartOutboxWorker(queuedThisPush bool) bool {
-	if queuedThisPush {
-		return true
-	}
-	status, err := publication.QueuedUploadStatus()
-	if err != nil {
-		return false
-	}
-	return status.Pending > 0 || status.Failed > 0
-}
-
-func gitCaptureAttestation(ctx context.Context, repoRoot string) (storage.CaptureAttestation, error) {
-	name, err := gitConfigValue(ctx, repoRoot, "user.name")
-	if err != nil {
-		return storage.CaptureAttestation{}, err
-	}
-	email, err := gitConfigValue(ctx, repoRoot, "user.email")
-	if err != nil {
-		return storage.CaptureAttestation{}, err
-	}
-	return storage.CaptureAttestation{Name: name, Email: email}, nil
-}
-
-func gitConfigValue(ctx context.Context, repoRoot, key string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoRoot, "config", key)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git config %s: %w", key, err)
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 func parseRefRange(refRange, base, head string) (string, string) {
@@ -399,64 +216,4 @@ func RefRangeForPush(localSHA, remoteSHA string) string {
 		return localSHA
 	}
 	return remoteSHA + ".." + localSHA
-}
-
-func backgroundWorkersEnabled() bool {
-	return os.Getenv("GX_DISABLE_BACKGROUND_WORKERS") == ""
-}
-
-// connectedOriginsFunc reports the origins of the repositories an organization
-// has connected, and whether an answer is available at all. It is a parameter
-// rather than a direct call to cloud.ConnectedOrigins because that answer comes
-// from a cache under $GX_HOME and, failing that, the network — so a test
-// calling straight through would gate on whatever the developer's machine
-// happens to have connected, and pass or fail accordingly.
-type connectedOriginsFunc func(ctx context.Context) ([]string, bool)
-
-// sessionsForThisRepo keeps the staged sessions that belong to the repository
-// being pushed, and reports how many were withheld because they belong to a
-// different one.
-//
-// The allowed set is the pushed repository's own origin. Sharing between
-// several repositories an organization has connected is a real requirement, but
-// only the server knows which repositories those are; until it can say, the
-// safe answer is the one repository we can prove is connected — this one, which
-// is being pushed through gx right now.
-func sessionsForThisRepo(ctx context.Context, stager storage.CaptureStager, connectedOrigins connectedOriginsFunc, repoRoot string, ids []string) ([]string, int) {
-	if len(ids) == 0 {
-		return ids, 0
-	}
-	binding := repobind.NewResolver().ForDirectory(ctx, repoRoot)
-	if !binding.Bound() {
-		// This repository has no identity of its own, so there is nothing to
-		// compare against and nothing is withheld.
-		return ids, 0
-	}
-	allowed := map[string]struct{}{binding.Origin: {}}
-	// Repositories the organization connected may inform each other: related
-	// projects genuinely benefit from each other's sessions. Only the server
-	// knows which those are, and when it cannot say, the pushed repository
-	// stands alone rather than the gate opening.
-	if origins, ok := connectedOrigins(ctx); ok {
-		for _, origin := range origins {
-			allowed[origin] = struct{}{}
-		}
-	}
-	origins, err := stager.SessionOriginsByID(ctx, ids)
-	if err != nil {
-		// A gate that cannot read is not a reason to drop work on the floor;
-		// this narrows sharing, it is not the last line of defense.
-		return ids, 0
-	}
-	kept := make([]string, 0, len(ids))
-	withheld := 0
-	for _, id := range ids {
-		origin, known := origins[id]
-		if _, ok := allowed[origin]; known && origin != "" && !ok {
-			withheld++
-			continue
-		}
-		kept = append(kept, id)
-	}
-	return kept, withheld
 }

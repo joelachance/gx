@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/satoricorp/gx/internal/cloud"
 )
 
 type Engine struct {
@@ -440,12 +438,8 @@ func Review(ctx context.Context, repoRoot string, opts Options) (Report, error) 
 	return NewEngine().Review(ctx, repoRoot, opts)
 }
 
-// Review runs one review. Every gx Cloud call it makes carries one run key, so
-// the server meters the whole review as a single run.
+// Review runs one review.
 func (e *Engine) Review(ctx context.Context, repoRoot string, opts Options) (Report, error) {
-	if cloud.RunKeyFrom(ctx) == "" {
-		ctx = cloud.WithRunKey(ctx, cloud.NewRunKey())
-	}
 	return e.review(ctx, repoRoot, opts)
 }
 

@@ -116,7 +116,7 @@ func runIndexForTest(ctx context.Context, t *testing.T, root string) string {
 	cfg := semantic.Config{OpenAIEmbeddingModel: "test-model", EmbeddingDimensions: 4}
 	result, err := semantic.IndexRepository(ctx, semantic.RepoIndexOptions{
 		RepoRoot:  root,
-		OrgID:     reviewOrgID(),
+		OrgID:     "",
 		Reason:    "test",
 		Config:    &cfg,
 		Embedder:  namespaceTestEmbedder{},

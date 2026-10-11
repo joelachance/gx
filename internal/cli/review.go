@@ -2,17 +2,14 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/codereview"
 	"github.com/satoricorp/gx/internal/vcs"
 	"github.com/spf13/cobra"
@@ -79,9 +76,6 @@ over the panel; GX_REVIEW_MODEL_B=off reviews with one model.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			startedAt := time.Now()
-			// The surface that invoked this run, recorded on the gx Cloud
-			// history row.
-			client := resolveClientSurface(clientOverride)
 			failOnLevel, err := codereview.ParseFailOnLevel(failOn)
 			if err != nil {
 				return err
@@ -160,17 +154,10 @@ over the panel; GX_REVIEW_MODEL_B=off reviews with one model.`,
 			} else if reportPath != "" {
 				fmt.Fprintln(cmd.ErrOrStderr(), labelValue("Report", muted("saved to "+reportPath)))
 			}
-			// Nothing was reviewed: publishing would overwrite a real review
-			// comment with a no-op, and there is no review to record.
-			// --no-comment suppresses only the outward-facing PR comment;
-			// history still records so per-surface review counts stay honest.
-			// --no-publish remains full suppression for runs that must leave
-			// no trace in gx Cloud.
-			if !noPublish && report.Reviewed {
-				if !noComment {
-					postReviewSummaryComment(ctx, repo, report, cmd.ErrOrStderr())
-				}
-				recordReviewHistory(ctx, repo, report, client, prompt, scopeExplicit, deep, wholeRepo, cmd.ErrOrStderr())
+			// Nothing was reviewed: commenting would overwrite a real review
+			// comment with a no-op.
+			if !noPublish && !noComment && report.Reviewed {
+				postReviewSummaryComment(ctx, repo, report, cmd.ErrOrStderr())
 			}
 			return reviewGateError(report, failOnLevel, cmd.Flags().Changed("fail-on"))
 		},
@@ -189,9 +176,15 @@ over the panel; GX_REVIEW_MODEL_B=off reviews with one model.`,
 	// Strong finding one model raised is demoted to advisory and does not fail
 	// it. --fail-on none restores the advisory-only exit 0.
 	cmd.Flags().StringVar(&failOn, "fail-on", string(codereview.FailOnBlocking), fmt.Sprintf("exit %d when findings at or above this level survive: %s; the default %q fails only on findings in the blocking lane, and \"none\" turns the gate off (exit %d when there was nothing to review, exit %d when the review ran degraded)", reviewFindingsExitCode, strings.Join(codereview.FailOnLevels(), ", "), string(codereview.FailOnBlocking), reviewNothingToReviewExitCode, reviewDegradedExitCode))
-	cmd.Flags().BoolVar(&noPublish, "no-publish", false, "skip posting the PR review comment and recording review history")
-	cmd.Flags().BoolVar(&noComment, "no-comment", false, "skip posting the PR review comment but still record review history; use --no-publish to suppress both")
-	cmd.Flags().StringVar(&clientOverride, "client", "", "surface invoking this review, overriding $GX_CLIENT: cli, mcp, skill, slash-gx, slash-gates")
+	cmd.Flags().BoolVar(&noComment, "no-comment", false, "skip posting the PR review comment")
+	// --no-publish and --client named the gx Cloud history record, which is
+	// gone. They are still accepted, hidden, because installed MCP servers,
+	// slash commands and scripts pass them, and an unknown flag would fail
+	// the review outright.
+	cmd.Flags().BoolVar(&noPublish, "no-publish", false, "same as --no-comment")
+	cmd.Flags().StringVar(&clientOverride, "client", "", "accepted for compatibility; ignored")
+	_ = cmd.Flags().MarkHidden("no-publish")
+	_ = cmd.Flags().MarkHidden("client")
 	cmd.Flags().IntVar(&maxFindings, "max-findings", 0, "cap how many recommendations the review reports (0 uses the default); applies to both what the model is asked for and what is reported")
 	cmd.Flags().BoolVar(&fast, "fast", false, "optimize for wall clock: one reviewer instead of two, no verification pass, and findings written without code examples")
 	return cmd
@@ -359,254 +352,6 @@ func gateDegradedReason(report codereview.Report) string {
 		return "only part of the change was reviewed"
 	}
 	return ""
-}
-
-// reviewRunMode labels a review run for gx Cloud history.
-//
-// WholeRepo comes first because it names the subject: a run recorded as
-// "patch" whose summary text reads "Reviewed the repository" is a row that
-// contradicts itself, and anything downstream that filters or ranks on the
-// mode would treat a whole-repo review as a patch review. Depth and scope
-// travel alongside as their own fields, so nothing is lost by this ordering.
-func reviewRunMode(prompt string, scopeExplicit bool, deep bool, wholeRepo bool) string {
-	switch {
-	case wholeRepo:
-		return "repo"
-	case deep:
-		return "deep"
-	case strings.TrimSpace(prompt) != "":
-		return "prompt"
-	case scopeExplicit:
-		return "scope"
-	default:
-		return "patch"
-	}
-}
-
-func recordReviewHistory(ctx context.Context, repo vcs.RepoInfo, report codereview.Report, clientSurface string, prompt string, scopeExplicit bool, deep bool, wholeRepo bool, stderr io.Writer) {
-	remoteURL := pointerString(repo.RemoteURL)
-	repoFullName := cloud.RepoFullNameFromRemoteURL(remoteURL)
-	if strings.TrimSpace(repoFullName) == "" {
-		return
-	}
-	client := cloud.NewClient()
-	if client == nil {
-		return
-	}
-	if _, err := cloud.CloudAPIToken(); err != nil {
-		// Signed out: history is an extra gx Cloud records for authenticated
-		// users, not something a read-only review depends on.
-		return
-	}
-	req := cloud.CodeReviewHistoryRecordRequest{
-		RepoRootPath: report.RepoRoot,
-		RepoFullName: repoFullName,
-		BranchName:   pointerString(repo.BranchName),
-		HeadCommitID: currentHeadCommit(ctx, repo.RootPath),
-		SourceKind:   "session_intent",
-		Client:       clientSurface,
-		Prompt:       prompt,
-		Scope:        firstNonEmptyString(report.Scope, codereview.DefaultScope),
-		Mode:         reviewRunMode(prompt, scopeExplicit, deep, wholeRepo),
-		Reviewer:     report.Reviewer,
-		SummaryKind:  "pr",
-		SummaryText:  codereview.RenderMarkdown(report),
-		Findings:     reviewHistoryFindings(repoFullName, report),
-		Payload: map[string]any{
-			"changed_files":  len(report.ChangedFiles),
-			"deep":           deep,
-			"whole_repo":     wholeRepo,
-			"scope_explicit": scopeExplicit,
-			// What the run actually read, so the row can be reconciled with
-			// its own summary text rather than inferred from the flags.
-			"review_mode": report.ReviewMode,
-			"reviewed":    report.Reviewed,
-		},
-	}
-	if _, err := client.RecordCodeReviewHistory(ctx, req); err != nil {
-		fmt.Fprintln(stderr, labelWarningValue("Warning", fmt.Sprintf("Could not record code review history: %v", err)))
-	}
-}
-
-func reviewHistoryFindings(repoFullName string, report codereview.Report) []cloud.CodeReviewFindingRecord {
-	findings := make([]cloud.CodeReviewFindingRecord, 0, len(report.Findings))
-	for _, finding := range report.Findings {
-		file, line := primaryFindingLocation(finding, report.ChangedFiles)
-		category := "general"
-		if len(finding.Scopes) > 0 && strings.TrimSpace(finding.Scopes[0]) != "" {
-			category = strings.TrimSpace(finding.Scopes[0])
-		} else if before, _, ok := strings.Cut(finding.ID, "."); ok && strings.TrimSpace(before) != "" {
-			category = strings.TrimSpace(before)
-		}
-		payload := map[string]any{
-			"id":       finding.ID,
-			"scopes":   finding.Scopes,
-			"benefit":  finding.Benefit,
-			"sources":  finding.SourceIDs,
-			"evidence": finding.Evidence,
-		}
-		// Rule identity and lane travel with the row so history can be read
-		// per rule (which rules keep firing, which get demoted) without
-		// re-deriving them from prose. Only set when the finding carries them:
-		// older rows have no such keys and readers treat absence as unknown.
-		for key, value := range map[string]string{
-			"rule_id":      finding.RuleID,
-			"lane":         finding.Lane,
-			"demoted_from": finding.DemotedFrom,
-			"materiality":  finding.Materiality,
-		} {
-			if value = strings.TrimSpace(value); value != "" {
-				payload[key] = value
-			}
-		}
-		record := cloud.CodeReviewFindingRecord{
-			Fingerprint:    reviewFindingFingerprint(repoFullName, finding, file, line, category),
-			RuleID:         strings.TrimSpace(finding.RuleID),
-			Outcome:        "valid",
-			Category:       category,
-			Language:       reviewHistoryLanguageForFile(file),
-			FilePath:       file,
-			LineStart:      line,
-			LineEnd:        line,
-			Title:          finding.Title,
-			Summary:        finding.Summary,
-			Recommendation: finding.Recommendation,
-			Confidence:     reviewFindingConfidence(finding.Strength),
-			Severity:       finding.Strength,
-			Payload:        payload,
-		}
-		findings = append(findings, record)
-	}
-	return findings
-}
-
-func primaryFindingLocation(finding codereview.Finding, changedFiles []string) (string, int) {
-	for _, evidence := range finding.Evidence {
-		for _, text := range []string{evidence.Label, evidence.Value} {
-			file, line := parseReviewLocation(text)
-			if file != "" {
-				return file, line
-			}
-		}
-	}
-	if len(changedFiles) > 0 {
-		return strings.TrimSpace(changedFiles[0]), 0
-	}
-	return "", 0
-}
-
-func parseReviewLocation(text string) (string, int) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "", 0
-	}
-	fields := strings.Fields(text)
-	if len(fields) > 0 {
-		text = fields[0]
-	}
-	file := text
-	line := 0
-	if before, after, ok := strings.Cut(text, ":"); ok {
-		if parsed, err := strconv.Atoi(strings.Trim(strings.TrimSpace(after), ":,.")); err == nil {
-			file = before
-			line = parsed
-		}
-	}
-	if strings.Contains(file, "/") || strings.Contains(file, ".") {
-		return strings.TrimSpace(file), line
-	}
-	return "", 0
-}
-
-// reviewFindingFingerprint is the identity a finding keeps across review runs,
-// so gx Cloud history can connect the same problem raised twice.
-//
-// Two layouts:
-//
-//   - Rule findings (RuleID set): identity is repo ‖ "rule" ‖ rule ‖ file ‖
-//     line. AI findings carry a positional ID (ai.review.3) and model-written
-//     Title/Summary, so hashing those made the same rule firing on the same
-//     line in two runs look like two unrelated findings and history rows never
-//     connected. The rule and the location are the parts that are stable. The
-//     literal "rule" domain separator sits where the legacy layout has the
-//     finding ID, so no rule ID can collide with a legacy fingerprint.
-//   - Everything else (RuleID empty): the legacy layout, repo ‖ id ‖ category ‖
-//     file ‖ line ‖ title ‖ summary, unchanged byte for byte so every row
-//     already stored keeps the fingerprint it was recorded under.
-func reviewFindingFingerprint(repoFullName string, finding codereview.Finding, file string, line int, category string) string {
-	if ruleID := strings.TrimSpace(finding.RuleID); ruleID != "" {
-		sum := sha256.Sum256([]byte(strings.Join([]string{
-			repoFullName,
-			"rule",
-			ruleID,
-			file,
-			strconv.Itoa(line),
-		}, "\x00")))
-		return fmt.Sprintf("%x", sum[:16])
-	}
-	sum := sha256.Sum256([]byte(strings.Join([]string{
-		repoFullName,
-		finding.ID,
-		category,
-		file,
-		strconv.Itoa(line),
-		finding.Title,
-		finding.Summary,
-	}, "\x00")))
-	return fmt.Sprintf("%x", sum[:16])
-}
-
-// reviewFindingConfidence maps a finding's Strength onto the 1-10 confidence
-// the gx Cloud history row stores. The real Strength vocabulary is "Blocking",
-// "Strong", "Worth exploring", "Speculative" (codereview.Finding.Strength); the
-// generic high/medium/low spellings are kept as aliases so any older producer
-// still lands where it used to.
-func reviewFindingConfidence(strength string) int {
-	switch strings.ToLower(strings.TrimSpace(strength)) {
-	case "blocking":
-		return 9
-	case "strong", "high":
-		return 8
-	case "worth exploring", "worth-exploring":
-		return 5
-	case "speculative":
-		return 3
-	case "low", "weak":
-		return 4
-	case "medium", "moderate":
-		return 6
-	default:
-		return 6
-	}
-}
-
-func reviewHistoryLanguageForFile(file string) string {
-	switch strings.ToLower(filepath.Ext(file)) {
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".ts", ".tsx":
-		return "typescript"
-	case ".js", ".jsx", ".mjs", ".cjs":
-		return "javascript"
-	case ".rs":
-		return "rust"
-	case ".sql":
-		return "sql"
-	case ".java":
-		return "java"
-	case ".c", ".h":
-		return "c"
-	case ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx":
-		return "cpp"
-	case ".cs":
-		return "csharp"
-	case ".dart":
-		return "dart"
-	default:
-		return ""
-	}
 }
 
 // requireReviewer refuses a review that has no model to review with.

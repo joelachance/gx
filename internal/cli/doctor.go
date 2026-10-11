@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,10 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/auth"
-	"github.com/satoricorp/gx/internal/cloud"
 	cursoringest "github.com/satoricorp/gx/internal/ingest/cursor"
-	"github.com/satoricorp/gx/internal/publication"
 	"github.com/satoricorp/gx/internal/semantic"
 	"github.com/satoricorp/gx/internal/storage"
 	"github.com/satoricorp/gx/internal/vcs"
@@ -25,7 +21,6 @@ import (
 func newDoctorCommand(ctx context.Context) *cobra.Command {
 	var jsonOut bool
 	var fix bool
-	var sendReport bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Fix current gx state",
@@ -48,9 +43,6 @@ func newDoctorCommand(ctx context.Context) *cobra.Command {
 			missingBase, missingDetectErr := doctorMissingStackBaseRefs(ctx, fix, missingBaseRepair)
 			if jsonOut {
 				payload := map[string]any{"doctor": doctorStatusJSON(ctx)}
-				if outboxStatus, err := publication.QueuedUploadStatus(); err == nil {
-					payload["publish_uploads"] = outboxStatus
-				}
 				if missingBaseErr == nil && (len(missingBaseRepair.Fixed) > 0 || len(missingBaseRepair.Actions) > 0) {
 					payload["missing_base_refs"] = missingBaseRepair
 				}
@@ -66,32 +58,11 @@ func newDoctorCommand(ctx context.Context) *cobra.Command {
 						payload["missing_base_repair"] = missingBaseRepair
 					}
 				}
-				if !sendReport {
-					return writeJSON(cmd, payload)
-				}
-				// Send the diagnosis that was just produced, then fold the
-				// outcome into the same document so stdout stays one JSON value.
-				result, reportErr := sendSupportReport(ctx, supportAttachment("gx-doctor.json", marshalDoctorDiagnosis(payload)))
-				if reportErr != nil {
-					payload["report_error"] = reportErr.Error()
-				} else {
-					payload["report"] = result
-				}
-				if err := writeJSON(cmd, payload); err != nil {
-					return err
-				}
-				return reportErr
+				return writeJSON(cmd, payload)
 			}
-			// With --report the printed diagnosis is also the thing we send, so
-			// tee it into a buffer while it renders.
 			out := cmd.OutOrStdout()
-			var diagnosis bytes.Buffer
-			if sendReport {
-				out = io.MultiWriter(out, &diagnosis)
-			}
 			capture := captureDoctorStatus(ctx, "")
 			printCaptureDoctor(out, capture)
-			reportAndDrainPublishOutbox(ctx, out)
 			reportCodeIndexFreshness(ctx, out, repoRootForDoctor(ctx))
 			printDoctorMissingBaseRefRepair(out, missingBaseRepair, missingBaseErr)
 			printDoctorStaleStacks(out, fix, stale, staleErr)
@@ -114,13 +85,6 @@ func newDoctorCommand(ctx context.Context) *cobra.Command {
 					fmt.Fprintln(out, labelWarningValue("Workflow repair", "repair failed: "+repairErr.Error()))
 				}
 			}
-			if sendReport {
-				result, reportErr := sendSupportReport(ctx, supportAttachment("gx-doctor.txt", diagnosis.String()))
-				if reportErr != nil {
-					return reportErr
-				}
-				printSupportReportResult(cmd.OutOrStdout(), result)
-			}
 			if staleErr != nil {
 				return staleErr
 			}
@@ -138,49 +102,7 @@ func newDoctorCommand(ctx context.Context) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print machine-readable JSON")
 	cmd.Flags().BoolVar(&fix, "fix", false, "repair safe gx workflow state issues")
-	cmd.Flags().BoolVar(&sendReport, "report", false, "send this diagnosis and recent gx logs to support")
 	return cmd
-}
-
-// marshalDoctorDiagnosis renders the JSON-mode payload for the support
-// attachment, so `--json --report` sends the same diagnosis it printed.
-func marshalDoctorDiagnosis(payload map[string]any) string {
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(raw)
-}
-
-// reportAndDrainPublishOutbox surfaces the publish-outbox backlog and, when
-// anything is pending or failed, retries the uploads right here. With `gx sync`
-// retired, doctor is the manual retry path; the pre-push hook is the automatic
-// one.
-func reportAndDrainPublishOutbox(ctx context.Context, w io.Writer) {
-	status, err := publication.QueuedUploadStatus()
-	if err != nil {
-		fmt.Fprintln(w, labelWarningValue("Publish outbox", "check skipped: "+err.Error()))
-		return
-	}
-	if status.Pending == 0 && status.Failed == 0 {
-		fmt.Fprintln(w, labelValue("Publish outbox", success("ok")+": empty"))
-		return
-	}
-	if !cloud.CloudConfigured() {
-		// Left by a build that had a gx Cloud. Retrying here could only fail.
-		fmt.Fprintln(w, labelWarningValue("Publish outbox", fmt.Sprintf(
-			"%d item(s) queued by an earlier build; with no gx Cloud configured nothing will upload them, and ~/.gx/publish-outbox is safe to delete",
-			status.Pending+status.Failed)))
-		return
-	}
-	detail := fmt.Sprintf("%d pending, %d failed", status.Pending, status.Failed)
-	if strings.TrimSpace(status.LastError) != "" {
-		detail += "; last error: " + strings.TrimSpace(status.LastError)
-	}
-	fmt.Fprintln(w, labelWarningValue("Publish outbox", detail))
-	if err := drainPublishUploadOutbox(ctx, w, false, 20); err != nil {
-		fmt.Fprintln(w, labelWarningValue("Publish outbox", "retry failed: "+err.Error()))
-	}
 }
 
 func printDoctorMissingBaseRefRepair(w io.Writer, result vcs.RebaseOntoDefaultResult, err error) {
@@ -375,7 +297,6 @@ func captureLedgerRows(ctx context.Context, status doctorJSON) []ledgerRowJSON {
 		}
 		rows = append(rows, row)
 	}
-	rows = append(rows, syncLedgerRow(status))
 	return rows
 }
 
@@ -408,35 +329,7 @@ func fallbackLedgerRows(status doctorJSON) []ledgerRowJSON {
 			Files:    "—",
 			Last:     "—",
 		},
-		syncLedgerRow(status),
 	}
-}
-
-// syncLedgerRow reports the real state of the upload queue.
-//
-// It used to return the literals "waiting" and "0" no matter what, so the one
-// screen a user checks to ask whether capture is reaching the cloud claimed a
-// healthy idle queue while every row in it was failing on every push.
-func syncLedgerRow(status doctorJSON) ledgerRowJSON {
-	captureStatus := status.Capture
-	pending := captureStatus.PendingExtracts + captureStatus.PendingSessions
-	row := ledgerRowJSON{
-		Agent:    "sync",
-		Filepath: "review upload queue",
-		Status:   "waiting",
-		Calls:    formatLedgerCount(pending),
-		Tokens:   "—",
-		Files:    "—",
-		Last:     "push",
-	}
-	switch {
-	case captureStatus.FailedUploads > 0:
-		row.Status = "failing"
-		row.Files = formatLedgerCount(captureStatus.FailedUploads)
-	case pending > 0:
-		row.Status = "queued"
-	}
-	return row
 }
 
 func agentLedgerStatus(agent string, status doctorJSON, calls int) string {
@@ -783,11 +676,7 @@ func reportCodeIndexFreshness(ctx context.Context, w io.Writer, repoRoot string)
 	if strings.TrimSpace(repoRoot) == "" {
 		return
 	}
-	orgID := ""
-	if creds, ok := auth.LoadUpload(); ok {
-		orgID = strings.TrimSpace(creds.OrgID)
-	}
-	identity := semantic.ResolveRepoIdentity(ctx, repoRoot, orgID, "")
+	identity := semantic.ResolveRepoIdentity(ctx, repoRoot, "", "")
 
 	statePath, err := semantic.RepoIndexStatePath(identity.Namespace)
 	if err != nil {

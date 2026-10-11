@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/satoricorp/gx/internal/auth"
 	"github.com/satoricorp/gx/internal/semantic"
 )
 
@@ -71,9 +70,6 @@ type CodeIndexRetriever struct {
 	// EmbedderFor builds an embedder for a namespace width. Injected so tests
 	// can drive fusion without an embeddings API.
 	EmbedderFor embedderFactory
-	// CloudSearcher overrides the gx Cloud retrieval client; injected in
-	// tests. When nil it is resolved from the signed-in credentials.
-	CloudSearcher reviewCloudSearcher
 }
 
 // codeIndexTarget is one candidate namespace and where it came from.
@@ -96,42 +92,22 @@ func codeIndexRetrieverFromEnv() ContextRetriever {
 }
 
 func (r CodeIndexRetriever) Retrieve(ctx context.Context, in RetrieveInput) ([]ContextSnippet, error) {
-	// The signed-in path: retrieval through gx Cloud, no provider keys on this
-	// machine. The direct-store path below stays for development (raw
-	// TURBOPUFFER_API_KEY) and for tests that inject a Store.
-	if r.Store == nil && !rawTurboPufferKeyPresent() {
-		searcher := r.CloudSearcher
-		if searcher == nil {
-			searcher = reviewCloudSearcherFromEnv()
-		}
-		if searcher != nil {
-			return retrieveCodeIndexViaCloud(ctx, in, searcher, r.limitFor(in.Options))
-		}
-	}
 	store, ok := r.resolveStore(in.Evidence)
 	if !ok {
 		return nil, nil
 	}
 	targets := r.Namespaces
 	if len(targets) == 0 {
-		// Review reads; it does not index. Keeping this repository's index
-		// current is gx Cloud's job, done from the GitHub App when a pull
-		// request merges, which covers every user rather than only those
-		// running the CLI with an embeddings key. Two writers filling one
-		// namespace with two different chunkings would also have them
-		// overwriting each other's rows for the same file on alternating runs.
+		// Review reads; it does not index. `gx index` fills the namespace,
+		// so a review never spends minutes embedding before it can start.
 		targets = codeIndexTargets(ctx, in.RepoRoot)
 	}
 	if len(targets) == 0 {
 		in.Evidence.Record(EvidenceStatus{
 			Source: codeIndexEvidenceSource,
 			State:  EvidenceMissing,
-			Detail: "no namespace could be resolved for this repository (no git remote and no org)",
-			// No remedy names the website here on purpose: without a GitHub
-			// remote there is no repository for gx Cloud to connect to, so
-			// pointing at /repositories would be an instruction that cannot be
-			// followed.
-			Remedy: "Add a GitHub remote, then connect this repository at https://gx.run/repositories",
+			Detail: "no namespace could be resolved for this repository (no git remote)",
+			Remedy: "Add a git remote, then run `gx index`",
 		})
 		return nil, nil
 	}
@@ -307,7 +283,7 @@ func codeIndexTargets(ctx context.Context, repoRoot string) []codeIndexTarget {
 		}
 		return out
 	}
-	identity := semantic.ResolveRepoIdentity(ctx, repoRoot, reviewOrgID(), "")
+	identity := semantic.ResolveRepoIdentity(ctx, repoRoot, "", "")
 	var out []codeIndexTarget
 	for _, candidate := range identity.Candidates() {
 		out = append(out, codeIndexTarget{Namespace: candidate.Namespace, Origin: candidate.Origin})
@@ -315,25 +291,9 @@ func codeIndexTargets(ctx context.Context, repoRoot string) []codeIndexTarget {
 	return out
 }
 
-// reviewOrgID is the signed-in gx org, or "" when this machine has never
-// logged in. Read in one place so the review's namespaces and the index refresh
-// it triggers cannot disagree about which org they belong to.
-func reviewOrgID() string {
-	if creds, ok := auth.LoadUpload(); ok {
-		return strings.TrimSpace(creds.OrgID)
-	}
-	return ""
-}
-
-// connectRepositoryRemedy is where a user goes to get their repository indexed.
-//
-// Every "no index" message ends here rather than at `gx index`. Indexing is gx
-// Cloud's job — it runs from the GitHub App on merge, so it stays current
-// without anyone remembering to re-run anything — and `gx index` is a hidden
-// maintenance command that indexes from one developer's checkout into one
-// developer's namespace. Sending users to it would have them build, by hand, a
-// worse copy of something the server maintains for them.
-const connectRepositoryRemedy = "Connect this repository at https://gx.run/repositories to have gx Cloud index it"
+// indexRepositoryRemedy is how a user gets this repository indexed: `gx index`
+// from a checkout, with the two keys it needs.
+const indexRepositoryRemedy = "Run `gx index` (with TURBOPUFFER_API_KEY and OPENAI_API_KEY set) to index this repository"
 
 // codeIndexMissingDetail explains an absent namespace.
 func codeIndexMissingDetail(target codeIndexTarget) string {
@@ -353,22 +313,15 @@ func codeIndexMissingDetail(target codeIndexTarget) string {
 // saw less than it could have and leaves them nowhere to go. This is the only
 // place that gap is visible to a user, so it carries the fix.
 //
-// Every case points at the website rather than at `gx index`. Indexing is gx
-// Cloud's job — it runs from the GitHub App on merge, so it stays current
-// without anyone remembering to re-run anything — and `gx index` is a hidden
-// maintenance command that indexes one developer's checkout into one
-// developer's namespace. Sending users there would have them build by hand a
-// worse copy of something the server maintains for them.
-//
 // The pre-remote name is the exception. It is probed only because an index may
-// predate this checkout's git remote, and connecting the repository will not
-// create a namespace under a name the repository no longer uses, so there is
-// nothing here for a user to act on.
+// predate this checkout's git remote, and `gx index` will not create a
+// namespace under a name the repository no longer uses, so there is nothing
+// here for a user to act on.
 func codeIndexMissingRemedy(target codeIndexTarget) string {
 	if target.Origin == semantic.NamespaceOriginPreRemote {
 		return ""
 	}
-	return connectRepositoryRemedy
+	return indexRepositoryRemedy
 }
 
 func codeIndexFreshnessDetail(probe indexProbe) string {

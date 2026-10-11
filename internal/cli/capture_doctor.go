@@ -9,17 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/hooks"
 	cursoringest "github.com/satoricorp/gx/internal/ingest/cursor"
 	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/uploadauth"
 )
-
-// staleStagedRowAge is how old an unattested staged row has to be before it is
-// treated as stranded rather than in flight. A push attests the rows it staged
-// within the same run, so anything older than a couple of days was missed.
-const staleStagedRowAge = 48 * time.Hour
 
 type captureDoctorJSON struct {
 	HookInstalled        bool                 `json:"hookInstalled"`
@@ -31,24 +24,12 @@ type captureDoctorJSON struct {
 	RepoHooksUnreachable int                  `json:"repoHooksUnreachable"`
 	RepoHooksOK          bool                 `json:"repoHooksOK"`
 	GlobalHooks          globalHookDoctorJSON `json:"globalHooks"`
-	UploadAuthed         bool                 `json:"uploadAuthed"`
-	UploadAPI            string               `json:"uploadAPI,omitempty"`
-	UploadAuthError      string               `json:"uploadAuthError,omitempty"`
-	// UploadLocal marks a build with no gx Cloud and no upload credentials:
-	// there is nothing to upload to, which is not an upload problem.
-	UploadLocal      bool               `json:"uploadLocal,omitempty"`
-	PendingExtracts  int                `json:"pendingExtracts"`
-	PendingSessions  int                `json:"pendingSessions"`
-	FailedUploads    int                `json:"failedUploads"`
-	ExhaustedUploads int                `json:"exhaustedUploads"`
-	UploadError      string             `json:"uploadError,omitempty"`
-	StaleStagedRows  int                `json:"staleStagedRows"`
-	CursorReachable  bool               `json:"cursorReachable"`
-	CursorPath       string             `json:"cursorPath,omitempty"`
-	DiskFreeGB       int                `json:"diskFreeGB"`
-	DiskWarn         bool               `json:"diskWarn"`
-	Issues           []captureIssueJSON `json:"issues,omitempty"`
-	OK               bool               `json:"ok"`
+	CursorReachable      bool                 `json:"cursorReachable"`
+	CursorPath           string               `json:"cursorPath,omitempty"`
+	DiskFreeGB           int                  `json:"diskFreeGB"`
+	DiskWarn             bool                 `json:"diskWarn"`
+	Issues               []captureIssueJSON   `json:"issues,omitempty"`
+	OK                   bool                 `json:"ok"`
 }
 
 type captureIssueJSON struct {
@@ -91,39 +72,6 @@ func captureDoctorStatus(ctx context.Context, repoRoot string) captureDoctorJSON
 			status.RepoHooksOK = false
 		}
 	}
-	if creds, kind, ok := uploadauth.LoadWithKind(); ok {
-		status.UploadAuthed = true
-		status.UploadAPI = creds.APIURL
-		switch kind {
-		case "gx-cli":
-			status.UploadAuthed, status.UploadAuthError = validateCaptureCloudSession(ctx, creds.Token)
-		case "github":
-			status.UploadAuthed, status.UploadAuthError = validateCaptureUploadToken(ctx, creds.Token)
-		}
-	}
-	status.UploadLocal = !status.UploadAuthed && status.UploadAuthError == "" && !cloud.CloudConfigured()
-	if counts, err := storage.PendingCaptureCounts(ctx); err == nil {
-		status.PendingExtracts = counts.Extracts
-		status.PendingSessions = counts.Sessions
-	}
-	// Uploads run detached with their output discarded, so upload_error is the
-	// only record they leave. Doctor is where a user goes to ask "is capture
-	// working?", and it used to answer from a hardcoded literal.
-	if failures, err := storage.CaptureUploadFailureCounts(ctx); err == nil {
-		status.FailedUploads = failures.Total()
-		status.ExhaustedUploads = failures.ExhaustedRows
-		status.UploadError = failures.LastError
-	}
-	if stager, err := storage.OpenCaptureStager(ctx); err == nil {
-		// Rows staged long ago that never became shareable are never going to:
-		// the run that could address them by id is over and their revisions are
-		// already pushed. Counting them is what keeps that residue from being
-		// invisible forever.
-		cutoff := time.Now().Add(-staleStagedRowAge).UnixMilli()
-		if count, err := stager.StaleStagedRows(ctx, cutoff); err == nil {
-			status.StaleStagedRows = count
-		}
-	}
 	if path, err := cursoringest.DefaultVSCDBPath(); err == nil {
 		status.CursorPath = path
 		if _, statErr := os.Stat(path); statErr == nil {
@@ -160,9 +108,7 @@ func captureDoctorOK(status captureDoctorJSON) bool {
 	return (!status.HookApplicable || status.HookInstalled) &&
 		!status.GlobalHooks.NeedsRepair &&
 		status.RepoHooksOK &&
-		(status.UploadAuthed || status.UploadLocal) &&
 		status.CursorReachable &&
-		status.FailedUploads == 0 &&
 		!status.DiskWarn
 }
 
@@ -170,38 +116,6 @@ func printCaptureDoctor(out fmtWriter, status captureDoctorJSON) {
 	fmt.Fprintln(out, labelValue("Hooks installed", captureHooksDoctorValue(status)))
 	if value := captureGlobalHooksDoctorValue(status.GlobalHooks); value != "" {
 		fmt.Fprintln(out, labelValue("Global hooks", value))
-	}
-	if status.UploadAuthed {
-		fmt.Fprintln(out, labelValue("Upload", success("ok")+": "+status.UploadAPI))
-	} else if status.UploadLocal {
-		fmt.Fprintln(out, labelValue("Upload", success("ok")+": local build, nothing uploads"))
-	} else {
-		hint := "run `gx auth login`"
-		if strings.TrimSpace(status.UploadAuthError) != "" {
-			hint = status.UploadAuthError
-		}
-		fmt.Fprintln(out, labelValue("Upload", danger("warn")+": "+hint))
-	}
-	backlog := status.PendingExtracts + status.PendingSessions
-	if backlog == 0 {
-		fmt.Fprintln(out, labelValue("Staging backlog", success("ok")+": 0 pending"))
-	} else {
-		fmt.Fprintln(out, labelValue("Staging backlog", fmt.Sprintf("%d pending", backlog)))
-	}
-	if status.StaleStagedRows > 0 {
-		fmt.Fprintln(out, labelValue("Stranded staging rows",
-			fmt.Sprintf("%d row(s) staged over %s ago and never attested; they will not upload",
-				status.StaleStagedRows, staleStagedRowAge)))
-	}
-	if status.FailedUploads > 0 {
-		detail := fmt.Sprintf("%d row(s) failing", status.FailedUploads)
-		if status.ExhaustedUploads > 0 {
-			detail += fmt.Sprintf(", %d gave up after %d attempts", status.ExhaustedUploads, storage.MaxUploadAttempts)
-		}
-		if strings.TrimSpace(status.UploadError) != "" {
-			detail += ": " + status.UploadError
-		}
-		fmt.Fprintln(out, labelValue("Upload errors", danger("warn")+": "+detail))
 	}
 	fmt.Fprintln(out, labelValue("Disk used", formatDiskUsedGB(gxStorageDiskUsedBytes())))
 }
@@ -415,22 +329,6 @@ func captureDoctorIssues(status captureDoctorJSON) []captureIssueJSON {
 			Action:   "run `gx init` in each registered repo",
 		})
 	}
-	if !status.UploadAuthed && !status.UploadLocal {
-		code := "upload_auth_missing"
-		message := "upload auth missing"
-		action := "run `gx auth login`"
-		if strings.TrimSpace(status.UploadAuthError) != "" {
-			code = "upload_auth_invalid"
-			message = "upload auth invalid"
-			action = status.UploadAuthError
-		}
-		issues = append(issues, captureIssueJSON{
-			Code:     code,
-			Severity: "fail",
-			Message:  message,
-			Action:   action,
-		})
-	}
 	if !status.CursorReachable {
 		action := "open Cursor once so gx can read state.vscdb"
 		if strings.TrimSpace(status.CursorPath) != "" {
@@ -440,18 +338,6 @@ func captureDoctorIssues(status captureDoctorJSON) []captureIssueJSON {
 			Code:     "cursor_vscdb_missing",
 			Severity: "fail",
 			Message:  "Cursor state.vscdb missing",
-			Action:   action,
-		})
-	}
-	if status.FailedUploads > 0 {
-		action := "run `gx capture sync` to see the failure"
-		if strings.TrimSpace(status.UploadError) != "" {
-			action = status.UploadError
-		}
-		issues = append(issues, captureIssueJSON{
-			Code:     "capture_upload_failing",
-			Severity: "fail",
-			Message:  fmt.Sprintf("%d staged capture row(s) failed to upload", status.FailedUploads),
 			Action:   action,
 		})
 	}
@@ -473,40 +359,6 @@ func firstNonEmptyCaptureString(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func validateCaptureUploadToken(ctx context.Context, token string) (bool, string) {
-	verifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	validation, err := cloud.ValidateGitHubAccessToken(verifyCtx, nil, token)
-	if err != nil {
-		return false, "could not verify GitHub token: " + err.Error()
-	}
-	if validation.Valid {
-		return true, ""
-	}
-	message := strings.TrimSpace(validation.Error)
-	if message == "" {
-		message = "GitHub rejected stored token"
-	}
-	return false, message + "; run `gx auth logout` then `gx auth login`"
-}
-
-func validateCaptureCloudSession(ctx context.Context, token string) (bool, string) {
-	verifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	validation, err := cloud.ValidateCloudAPISession(verifyCtx, nil, token)
-	if err != nil {
-		return false, "could not verify gx API session: " + err.Error()
-	}
-	if validation.Valid {
-		return true, ""
-	}
-	message := strings.TrimSpace(validation.Error)
-	if message == "" {
-		message = "gx API rejected stored session"
-	}
-	return false, message + "; run `gx auth logout` then `gx auth login`"
 }
 
 type fmtWriter interface {

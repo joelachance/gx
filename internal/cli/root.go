@@ -14,9 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/satoricorp/gx/internal/authoring"
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/gxconfig"
-	"github.com/satoricorp/gx/internal/inference"
 	"github.com/satoricorp/gx/internal/vcs"
 	"github.com/satoricorp/gx/internal/version"
 )
@@ -34,7 +32,6 @@ func NewRoot(ctx context.Context) *cobra.Command {
 			if strings.Contains(cmd.CommandPath(), "__") {
 				return nil
 			}
-			inference.ApplyToEnvironment()
 			return ensureAutoInitializedRepo(ctx, engine, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -56,11 +53,8 @@ func NewRoot(ctx context.Context) *cobra.Command {
 		newInternalHooksCommand(ctx),
 		newVersionCommand(),
 		newDoctorCommand(ctx),
-		newAuthCommand(ctx),
 		newInitCommand(ctx, engine),
 		newCaptureCommand(ctx),
-		newPublishUploadCommand(ctx),
-		newReportCommand(ctx),
 		newReviewCommand(ctx),
 		newEnhanceCommand(ctx),
 		newIndexCommand(ctx),
@@ -86,7 +80,7 @@ func NewRoot(ctx context.Context) *cobra.Command {
 func assignCommandGroups(root *cobra.Command) {
 	for _, cmd := range root.Commands() {
 		switch cmd.Name() {
-		case "init", "auth":
+		case "init":
 			cmd.GroupID = groupSetup
 		case "review", "gates":
 			cmd.GroupID = groupWork
@@ -156,8 +150,6 @@ func newInitCommand(ctx context.Context, engine *authoring.Engine) *cobra.Comman
 				Interactive: !yes,
 				In:          initInput(cmd, yes),
 				Out:         initOutput(cmd, yes),
-
-				SharesIdentity: cloud.CloudConfigured(),
 			})
 			if err != nil {
 				return err

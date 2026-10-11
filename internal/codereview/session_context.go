@@ -40,9 +40,6 @@ type SessionContextRetriever struct {
 	Namespaces  []codeIndexTarget
 	Limit       int
 	EmbedderFor embedderFactory
-	// CloudSearcher overrides the gx Cloud retrieval client; injected in
-	// tests. When nil it is resolved from the signed-in credentials.
-	CloudSearcher reviewCloudSearcher
 }
 
 // EvidenceSource implements evidenceNamer.
@@ -67,22 +64,13 @@ func (r SessionContextRetriever) Retrieve(ctx context.Context, in RetrieveInput)
 	}
 	store := r.Store
 	if store == nil {
-		// The signed-in path: retrieval through gx Cloud, no provider keys on
-		// this machine. Direct store access stays for development.
 		if !rawTurboPufferKeyPresent() {
-			searcher := r.CloudSearcher
-			if searcher == nil {
-				searcher = reviewCloudSearcherFromEnv()
-			}
-			if searcher != nil {
-				return retrieveSessionsViaCloud(ctx, in, searcher, limit)
-			}
 			in.Evidence.Record(noRetrievalBackend(sessionEvidenceSource))
 			return nil, nil
 		}
 		store = newTurboPufferIndexStore(strings.TrimSpace(os.Getenv("TURBOPUFFER_API_KEY")), firstNonEmpty(os.Getenv("GX_TPUF_BASE_URL"), defaultReviewResourceBaseURL))
 	}
-	repoFullName := reviewHistoryRepoFullName(ctx, in.RepoRoot)
+	repoFullName := semantic.RepoFullNameForRoot(ctx, in.RepoRoot)
 	targets := r.Namespaces
 	if len(targets) == 0 {
 		targets = sessionNamespaceTargets(in.RepoRoot, repoFullName)
@@ -209,7 +197,7 @@ func sessionNamespaceTargets(repoRoot, repoFullName string) []codeIndexTarget {
 	identity := semantic.RepoIdentity{
 		RepoRoot:     repoRoot,
 		RepoFullName: repoFullName,
-		OrgID:        reviewOrgID(),
+		OrgID:        "",
 	}
 	identity.Namespace = semantic.NamespaceForRepo(identity.OrgID, identity.RepoFullName, identity.RepoRoot)
 	var out []codeIndexTarget
