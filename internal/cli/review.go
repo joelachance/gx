@@ -190,7 +190,7 @@ GX_REVIEW_JUDGE_MODEL, GX_GATE_MODEL) still wins over the preset.`,
 	cmd.Flags().StringVar(&failOn, "fail-on", string(codereview.FailOnBlocking), fmt.Sprintf("exit %d when findings at or above this level survive: %s; the default %q fails only on findings in the blocking lane, and \"none\" turns the gate off (exit %d when there was nothing to review, exit %d when the review ran degraded)", reviewFindingsExitCode, strings.Join(codereview.FailOnLevels(), ", "), string(codereview.FailOnBlocking), reviewNothingToReviewExitCode, reviewDegradedExitCode))
 	cmd.Flags().BoolVar(&noPublish, "no-publish", false, "skip posting the PR review comment and recording review history")
 	cmd.Flags().BoolVar(&noComment, "no-comment", false, "skip posting the PR review comment but still record review history; use --no-publish to suppress both")
-	cmd.Flags().StringVar(&clientOverride, "client", "", "surface invoking this review, overriding $GX_CLIENT: cli, mcp, skill, slash-gx")
+	cmd.Flags().StringVar(&clientOverride, "client", "", "surface invoking this review, overriding $GX_CLIENT: cli, mcp, skill, slash-gx, slash-gates")
 	cmd.Flags().IntVar(&maxFindings, "max-findings", 0, "cap how many recommendations the review reports (0 uses the default); applies to both what the model is asked for and what is reported")
 	cmd.Flags().BoolVar(&fast, "fast", false, "optimize for wall clock: one reviewer instead of two, no verification pass, and findings written without code examples")
 	return cmd
