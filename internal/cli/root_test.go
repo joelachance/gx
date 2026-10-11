@@ -13,9 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/codereview"
 	"github.com/satoricorp/gx/internal/vcs"
 )
@@ -88,8 +86,8 @@ func TestRootHelpPrintsAsciiLogoAtTop(t *testing.T) {
 	if !strings.Contains(text, "$ gx help") {
 		t.Fatalf("root help missing gx help invocation:\n%s", text)
 	}
-	if !strings.Contains(text, "Not signed in  gx auth login") {
-		t.Fatalf("root help missing signed-out auth line:\n%s", text)
+	if strings.Contains(text, "auth login") {
+		t.Fatalf("root help still offers a sign-in that does not exist:\n%s", text)
 	}
 	if !strings.Contains(text, "review (gxr)") {
 		t.Fatalf("root help missing alias %q:\n%s", "review (gxr)", text)
@@ -113,75 +111,6 @@ func TestReviewAliasResolves(t *testing.T) {
 	}
 }
 
-func TestRootHelpShowsSignedInUser(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("GX_HOME", t.TempDir())
-	if err := cloud.SaveCloudCredentials(cloud.CloudCredentials{Login: "octocat", GitHubAccessToken: "gho_saved", ObtainedAt: time.Now()}); err != nil {
-		t.Fatalf("SaveCloudCredentials() error = %v", err)
-	}
-	root := NewRoot(context.Background())
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--help"})
-
-	if err := root.Execute(); err != nil {
-		t.Fatalf("root.Execute() error = %v", err)
-	}
-
-	if text := out.String(); !strings.Contains(text, "Signed in as octocat") {
-		t.Fatalf("root help missing signed-in auth line:\n%s", text)
-	}
-}
-
-func TestRootHelpIgnoresLegacyLoginWithoutGitHubToken(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("GX_HOME", t.TempDir())
-	if err := cloud.SaveCloudCredentials(cloud.CloudCredentials{Login: "api-key", ObtainedAt: time.Now()}); err != nil {
-		t.Fatalf("SaveCloudCredentials() error = %v", err)
-	}
-	root := NewRoot(context.Background())
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--help"})
-
-	if err := root.Execute(); err != nil {
-		t.Fatalf("root.Execute() error = %v", err)
-	}
-
-	text := out.String()
-	if strings.Contains(text, "Signed in as api-key") {
-		t.Fatalf("root help showed stale legacy login:\n%s", text)
-	}
-	if !strings.Contains(text, "Not signed in  gx auth login") {
-		t.Fatalf("root help missing signed-out auth line:\n%s", text)
-	}
-}
-
-func TestRootHelpShowsStoredLoginWithCloudEnvPresent(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("GX_HOME", t.TempDir())
-	t.Setenv("GX_CLOUD_URL", "http://localhost:3200/gx/pr")
-	if err := cloud.SaveCloudCredentials(cloud.CloudCredentials{Login: "joelachance", GitHubAccessToken: "gho_saved", ObtainedAt: time.Now()}); err != nil {
-		t.Fatalf("SaveCloudCredentials() error = %v", err)
-	}
-	root := NewRoot(context.Background())
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--help"})
-
-	if err := root.Execute(); err != nil {
-		t.Fatalf("root.Execute() error = %v", err)
-	}
-
-	text := out.String()
-	if !strings.Contains(text, "Signed in as joelachance") {
-		t.Fatalf("root help missing stored login auth line:\n%s", text)
-	}
-}
-
 func TestDemoAndOpsCommandsAreRemoved(t *testing.T) {
 	root := NewRoot(context.Background())
 	for _, args := range [][]string{{"demo"}, {"ops"}, {"ops", "diagnose", "doctor"}, {"ops", "diag", "doctor"}} {
@@ -199,96 +128,6 @@ func TestDemoAndOpsCommandsAreRemoved(t *testing.T) {
 		if group.Title == "Advanced:" {
 			t.Fatalf("root still declares the now-empty %q group", group.Title)
 		}
-	}
-}
-
-func TestDoctorAcceptsReportFlag(t *testing.T) {
-	root := NewRoot(context.Background())
-	doctor, _, err := root.Find([]string{"doctor"})
-	if err != nil || doctor == nil || doctor.Name() != "doctor" {
-		t.Fatalf("Find(doctor) = cmd=%v err=%v, want doctor", doctor, err)
-	}
-	flag := doctor.Flags().Lookup("report")
-	if flag == nil {
-		t.Fatal("gx doctor is missing the --report flag")
-	}
-	if flag.Value.Type() != "bool" {
-		t.Fatalf("gx doctor --report type = %q, want bool", flag.Value.Type())
-	}
-}
-
-func TestReportCommandStaysResolvableAsHiddenAlias(t *testing.T) {
-	root := NewRoot(context.Background())
-	report, _, err := root.Find([]string{"report"})
-	if err != nil || report == nil || report.Name() != "report" {
-		t.Fatalf("Find(report) = cmd=%v err=%v, want report", report, err)
-	}
-	if !report.Hidden {
-		t.Fatal("gx report should be hidden now that gx doctor --report is the public spelling")
-	}
-	if report.GroupID != "" {
-		t.Fatalf("gx report GroupID = %q, want no group", report.GroupID)
-	}
-}
-
-func TestDoctorReportSendsDiagnosisWithLogs(t *testing.T) {
-	repoRoot := initGitRepo(t)
-	t.Chdir(repoRoot)
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("GX_HOME", t.TempDir())
-	if err := cloud.SaveCloudCredentials(cloud.CloudCredentials{Login: "octocat", GitHubAccessToken: "gho_saved", ObtainedAt: time.Now()}); err != nil {
-		t.Fatalf("SaveCloudCredentials() error = %v", err)
-	}
-	var got cloud.ReportLogRequest
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/reported-logs" {
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
-			t.Fatalf("decode report body: %v", err)
-		}
-		_, _ = w.Write([]byte(`{"id":"report-9","url":"https://gx.run/reports/report-9"}`))
-	}))
-	defer server.Close()
-	t.Setenv("GX_CLOUD_URL", server.URL)
-	// `gx doctor` checks the saved GitHub token against GitHub's user endpoint,
-	// which sent this test to api.github.com on every run with a token it had
-	// just invented. The endpoint is a separate override from GX_GITHUB_API_URL,
-	// so pointing that one at a fake is not enough.
-	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"login":"octocat","id":583231}`))
-	}))
-	defer github.Close()
-	t.Setenv("GX_GITHUB_USER_URL", github.URL)
-
-	root := NewRoot(context.Background())
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"doctor", "--report"})
-
-	if err := root.Execute(); err != nil {
-		t.Fatalf("gx doctor --report error = %v\n%s", err, out.String())
-	}
-
-	var diagnosis string
-	for _, log := range got.Logs {
-		if log.Path == "gx-doctor.txt" {
-			diagnosis = log.Content
-		}
-	}
-	if diagnosis == "" {
-		t.Fatalf("report logs missing the doctor diagnosis: %#v", got.Logs)
-	}
-	if !strings.Contains(diagnosis, "Publish outbox") {
-		t.Fatalf("doctor diagnosis attachment = %q, want the printed doctor output", diagnosis)
-	}
-	text := out.String()
-	if !strings.Contains(text, "Publish outbox") {
-		t.Fatalf("gx doctor --report stopped printing the diagnosis:\n%s", text)
-	}
-	if !strings.Contains(text, "Report sent") || !strings.Contains(text, "report-9") {
-		t.Fatalf("gx doctor --report missing send confirmation:\n%s", text)
 	}
 }
 

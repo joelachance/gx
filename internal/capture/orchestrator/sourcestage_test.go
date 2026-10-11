@@ -219,21 +219,14 @@ func TestSourceStaging_PointerRowsForMatchedSourcesOnly(t *testing.T) {
 		t.Fatalf("parent row id changed across identical re-runs: %v", keysOf(again))
 	}
 
-	// A grown source re-stages in place: same row id, fresh fingerprint, and
-	// the row uploads again while the untouched subagent row stays uploaded.
-	if err := stager.MarkSessionUploaded(ctx, parentRow.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := stager.MarkSessionUploaded(ctx, subagentRow.ID); err != nil {
-		t.Fatal(err)
-	}
+	// A grown source re-stages in place: same row id, fresh fingerprint.
 	grown := probeEditLine(repo, "alpha.go", probeFileAContent) + probeEditLine(repo, "alpha.go", probeFileAContent)
 	writeTranscript(t, parentPath, grown)
 
 	runProbe(t, ctx, repo, claudeDir)
 	afterGrowth := pendingByID(t, ctx, stager)
-	if len(afterGrowth) != 1 {
-		t.Fatalf("pending rows after growth = %v, want only the grown parent row", keysOf(afterGrowth))
+	if len(afterGrowth) != 2 {
+		t.Fatalf("rows after growth = %v, want the same two rows", keysOf(afterGrowth))
 	}
 	updated, ok := afterGrowth[parentRow.ID]
 	if !ok {

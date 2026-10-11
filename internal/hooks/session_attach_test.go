@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/satoricorp/gx/internal/gxtest"
 	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/reviewbundle"
 	"github.com/satoricorp/gx/internal/storage"
 	"github.com/satoricorp/gx/internal/vcs"
 )
@@ -47,7 +47,7 @@ func TestRunPushAttachesSessionsFromColdStart(t *testing.T) {
 
 	repo, base, head := coldStartRepo(t, map[string]string{"alpha.go": coldStartContent})
 	refRange := base + ".." + head
-	transcript := filepath.Join(home, ".claude", "projects", claudeProjectSlug(repo), coldStartConversation+".jsonl")
+	transcript := filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(repo), coldStartConversation+".jsonl")
 	writeClaudeTranscript(t, transcript, repo, coldStartConversation, "alpha.go", coldStartContent)
 
 	// The premise. If this is ever non-zero the test has started seeding the
@@ -59,10 +59,7 @@ func TestRunPushAttachesSessionsFromColdStart(t *testing.T) {
 
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: repo,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
 		RefRange: refRange,
-		HeadSHA:  head,
 		HomeDir:  home,
 		Tools:    []string{"claude"},
 	})
@@ -79,46 +76,10 @@ func TestRunPushAttachesSessionsFromColdStart(t *testing.T) {
 		t.Fatalf("AttachedSessions = %d, want 1", outcome.AttachedSessions)
 	}
 
-	// The artifact this very push wrote must already carry the session:
-	// EnqueueAdoptedPublication runs reviewbundle.BuildPush synchronously in
-	// this process, which is why the attach has to happen before it.
-	sessions := outcome.Publication.Artifact.Sessions
-	if len(sessions) != 1 {
-		t.Fatalf("artifact sessions = %+v, want exactly one", sessions)
-	}
-	if sessions[0].ID != coldStartConversation {
-		t.Fatalf("session id = %q, want the conversation UUID %q (identity comes from the transcript path)",
-			sessions[0].ID, coldStartConversation)
-	}
-	// The console reads session.command first and only falls back to
-	// session.source; without this field every session renders as `command=?`.
-	if sessions[0].Command != "claude" {
-		t.Fatalf("session command = %q, want claude", sessions[0].Command)
-	}
-	// Both are written, so the console's fallback also resolves. Asserted so a
-	// change that drops either one fails here rather than silently degrading the
-	// rendered session to `command=?`.
-	if sessions[0].Source == nil || *sessions[0].Source != "claude" {
-		t.Fatalf("session source = %v, want claude", sessions[0].Source)
-	}
-	// Compared against the symlink-resolved path: on macOS t.TempDir hands back
-	// /var/folders/... while git and the repo resolver both report the real
-	// /private/var/folders/... underneath it.
-	if sessions[0].RepoRoot == nil || *sessions[0].RepoRoot != resolvedPath(t, repo) {
-		t.Fatalf("session repo_root = %v, want %q", sessions[0].RepoRoot, resolvedPath(t, repo))
-	}
-
-	// And the same rows are visible to a freshly built bundle, not just to the
-	// artifact the push happened to hold in memory.
-	rebuilt := buildPushBundle(t, ctx, repo, refRange, head)
-	if len(rebuilt.Sessions) != 1 || rebuilt.Sessions[0].ID != coldStartConversation {
-		t.Fatalf("rebuilt bundle sessions = %+v, want the one attached session", rebuilt.Sessions)
-	}
-	if rebuilt.SchemaVersion != 2 {
-		t.Fatalf("schema version = %d, want 2", rebuilt.SchemaVersion)
-	}
-	if rebuilt.Sessions[0].Command != "claude" {
-		t.Fatalf("rebuilt session command = %q, want claude", rebuilt.Sessions[0].Command)
+	// The session is linked to the commit it wrote, in ~/.gx, which is what a
+	// review of that commit reads.
+	if ids := sessionIDsForCommit(t, ctx, repo, head); len(ids) != 1 || ids[0] != coldStartConversation {
+		t.Fatalf("sessions linked to the pushed commit = %v, want [%s] (identity comes from the transcript path)", ids, coldStartConversation)
 	}
 }
 
@@ -134,15 +95,12 @@ func TestRunPushAttachIsIdempotent(t *testing.T) {
 
 	repo, base, head := coldStartRepo(t, map[string]string{"alpha.go": coldStartContent})
 	refRange := base + ".." + head
-	transcript := filepath.Join(home, ".claude", "projects", claudeProjectSlug(repo), coldStartConversation+".jsonl")
+	transcript := filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(repo), coldStartConversation+".jsonl")
 	writeClaudeTranscript(t, transcript, repo, coldStartConversation, "alpha.go", coldStartContent)
 
 	opts := hooks.PushOptions{
 		RepoRoot: repo,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
 		RefRange: refRange,
-		HeadSHA:  head,
 		HomeDir:  home,
 		Tools:    []string{"claude"},
 	}
@@ -162,9 +120,8 @@ func TestRunPushAttachIsIdempotent(t *testing.T) {
 	if n := tableCount(t, ctx, `SELECT count(*) FROM sessions`); n != 1 {
 		t.Fatalf("sessions rows = %d, want 1 after two pushes", n)
 	}
-	bundle := buildPushBundle(t, ctx, repo, refRange, head)
-	if len(bundle.Sessions) != 1 {
-		t.Fatalf("bundle sessions = %+v, want one entry, not a duplicate", bundle.Sessions)
+	if ids := sessionIDsForCommit(t, ctx, repo, head); len(ids) != 1 {
+		t.Fatalf("sessions linked to the commit = %v, want one entry, not a duplicate", ids)
 	}
 }
 
@@ -193,7 +150,7 @@ func TestRunPushAttachesSubagentsAsDistinctSessions(t *testing.T) {
 	})
 	refRange := base + ".." + head
 
-	projects := filepath.Join(home, ".claude", "projects", claudeProjectSlug(repo))
+	projects := filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(repo))
 	// Parent conversation, plus two subagents that carry the PARENT's id in-file.
 	writeClaudeTranscript(t, filepath.Join(projects, coldStartConversation+".jsonl"),
 		repo, coldStartConversation, "alpha.go", alpha)
@@ -208,10 +165,7 @@ func TestRunPushAttachesSubagentsAsDistinctSessions(t *testing.T) {
 
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: repo,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
 		RefRange: refRange,
-		HeadSHA:  head,
 		HomeDir:  home,
 		Tools:    []string{"claude"},
 	})
@@ -229,16 +183,16 @@ func TestRunPushAttachesSubagentsAsDistinctSessions(t *testing.T) {
 		otherConversation + ":subagent:agent-a":     true,
 	}
 	got := map[string]bool{}
-	for _, session := range buildPushBundle(t, ctx, repo, refRange, head).Sessions {
-		got[session.ID] = true
+	for _, id := range sessionIDsForCommit(t, ctx, repo, head) {
+		got[id] = true
 	}
 	for id := range want {
 		if !got[id] {
-			t.Fatalf("bundle sessions = %v, missing %q", got, id)
+			t.Fatalf("sessions linked to the commit = %v, missing %q", got, id)
 		}
 	}
 	if len(got) != len(want) {
-		t.Fatalf("bundle sessions = %v, want exactly %v", got, want)
+		t.Fatalf("sessions linked to the commit = %v, want exactly %v", got, want)
 	}
 }
 
@@ -268,7 +222,7 @@ func TestRunPushAttachesLinksToTheirOwnCommits(t *testing.T) {
 	humanSHA := commitWithTrailer(t, repo, map[string]string{"human.go": "package human\n\nvar Hand = 7\n"}, "hand written")
 	secondSHA := commitWithTrailer(t, repo, map[string]string{"beta.go": beta}, "add beta")
 
-	projects := filepath.Join(home, ".claude", "projects", claudeProjectSlug(repo))
+	projects := filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(repo))
 	writeClaudeTranscript(t, filepath.Join(projects, coldStartConversation+".jsonl"),
 		repo, coldStartConversation, "alpha.go", alpha)
 	writeClaudeTranscript(t, filepath.Join(projects, secondConversation+".jsonl"),
@@ -276,10 +230,7 @@ func TestRunPushAttachesLinksToTheirOwnCommits(t *testing.T) {
 
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: repo,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
 		RefRange: base + ".." + secondSHA,
-		HeadSHA:  secondSHA,
 		HomeDir:  home,
 		Tools:    []string{"claude"},
 	})
@@ -342,16 +293,13 @@ func TestRunPushFromLinkedWorktreePublishesSessions(t *testing.T) {
 	head := commitWithTrailer(t, worktree, map[string]string{"gamma.go": gamma}, "add gamma")
 
 	writeClaudeTranscript(t,
-		filepath.Join(home, ".claude", "projects", claudeProjectSlug(worktree), worktreeConversation+".jsonl"),
+		filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(worktree), worktreeConversation+".jsonl"),
 		worktree, worktreeConversation, "gamma.go", gamma)
 
 	refRange := base + ".." + head
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: worktree,
-		Remote:   "origin",
-		LocalRef: "refs/heads/feature",
 		RefRange: refRange,
-		HeadSHA:  head,
 		HomeDir:  home,
 		Tools:    []string{"claude"},
 	})
@@ -365,19 +313,9 @@ func TestRunPushFromLinkedWorktreePublishesSessions(t *testing.T) {
 		t.Fatalf("AttachedSessions = %d, want 1", outcome.AttachedSessions)
 	}
 
-	// The write landed. The point of this test is that the READ finds it.
-	sessions := outcome.Publication.Artifact.Sessions
-	if len(sessions) != 1 || sessions[0].ID != worktreeConversation {
-		t.Fatalf("artifact sessions = %+v, want [%s] — the bundle resolved a different repos row than the attach did",
-			sessions, worktreeConversation)
-	}
-	if sessions[0].Command != "claude" {
-		t.Fatalf("session command = %q, want claude", sessions[0].Command)
-	}
-
-	rebuilt := buildPushBundle(t, ctx, worktree, refRange, head)
-	if len(rebuilt.Sessions) != 1 || rebuilt.Sessions[0].ID != worktreeConversation {
-		t.Fatalf("rebuilt bundle sessions = %+v, want the attached session", rebuilt.Sessions)
+	// The write landed, against the commit the worktree pushed.
+	if ids := sessionIDsForCommit(t, ctx, worktree, head); len(ids) != 1 || ids[0] != worktreeConversation {
+		t.Fatalf("sessions linked to the pushed commit = %v, want [%s] — the attach resolved a different repos row", ids, worktreeConversation)
 	}
 }
 
@@ -474,27 +412,6 @@ func writeClaudeTranscript(t *testing.T, path, repoRoot, inFileSessionID, file, 
 	if err := os.WriteFile(path, append(line, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// buildPushBundle rebuilds the publish artifact through the same path the hook
-// uses, so what it asserts is what a real push would upload. Going through
-// EnqueueAdoptedPublication rather than calling reviewbundle.BuildPush directly
-// is deliberate: BuildPush only lists sessions for commits it was handed a
-// RevisionID for, and assembling that PushResult by hand in the test would let
-// the test pass on a shape production never produces.
-func buildPushBundle(t *testing.T, ctx context.Context, repoRoot, refRange, headSHA string) reviewbundle.Bundle {
-	t.Helper()
-	result, err := hooks.EnqueueAdoptedPublication(ctx, hooks.AdoptPushOptions{
-		RepoRoot: repoRoot,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
-		HeadSHA:  headSHA,
-		RefRange: refRange,
-	})
-	if err != nil {
-		t.Fatalf("EnqueueAdoptedPublication() error = %v", err)
-	}
-	return result.Artifact.Bundle
 }
 
 func sessionIDsForCommit(t *testing.T, ctx context.Context, repoRoot, sha string) []string {

@@ -61,21 +61,3 @@ func TestResolveEnvFallbackOrder(t *testing.T) {
 		t.Fatalf("Resolve() = %#v, want anthropic env first", creds)
 	}
 }
-
-func TestApplyToEnvironmentKeepsOnlyActiveProvider(t *testing.T) {
-	t.Setenv("GX_HOME", t.TempDir())
-	t.Setenv("ANTHROPIC_API_KEY", "env-anthropic")
-	t.Setenv("OPENAI_API_KEY", "env-openai")
-	if err := Save(Credentials{Provider: "anthropic", APIKey: "stored-anthropic"}); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	ApplyToEnvironment()
-
-	if got := os.Getenv("ANTHROPIC_API_KEY"); got != "stored-anthropic" {
-		t.Fatalf("ANTHROPIC_API_KEY = %q, want stored-anthropic", got)
-	}
-	if got := os.Getenv("OPENAI_API_KEY"); got != "" {
-		t.Fatalf("OPENAI_API_KEY = %q, want unset", got)
-	}
-}

@@ -11,14 +11,6 @@ import (
 	"github.com/satoricorp/gx/internal/gxconfig"
 )
 
-func TestRootExposesAuthCommand(t *testing.T) {
-	root := cli.NewRoot(context.Background())
-	cmd, _, err := root.Find([]string{"auth", "login"})
-	if err != nil || cmd == nil {
-		t.Fatalf("auth login command not found: %v", err)
-	}
-}
-
 func TestRootRemovesShortcutCommands(t *testing.T) {
 	root := cli.NewRoot(context.Background())
 	for _, name := range []string{"tla", "tls", "tlt"} {
@@ -141,48 +133,12 @@ func TestRootHelpShowsHumanCommandsAndHidesAgentCommands(t *testing.T) {
 	}
 }
 
-func TestRootHelpOffersAuthWhenACloudIsConfigured(t *testing.T) {
-	t.Setenv("GX_HOME", t.TempDir())
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("GX_CLOUD_URL", "https://cloud.example.invalid")
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-	root := cli.NewRoot(context.Background())
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--help"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("root.Execute() unexpected error = %v", err)
-	}
-	text := out.String()
-	setup, work := strings.Index(text, "Setup:"), strings.Index(text, "Work:")
-	auth := strings.Index(text, "  auth")
-	if auth < 0 || auth < setup || auth > work {
-		t.Fatalf("root help with a cloud configured should list auth under Setup:\n%s", text)
-	}
-	if !strings.Contains(text, "gx auth login") {
-		t.Fatalf("root help with a cloud configured should offer sign-in:\n%s", text)
-	}
-}
-
 func TestRootRemovesDemoAndOpsCommands(t *testing.T) {
 	root := cli.NewRoot(context.Background())
 	for _, name := range []string{"demo", "ops"} {
 		if cmd, _, err := root.Find([]string{name}); err == nil && cmd != nil && cmd.Name() == name {
 			t.Fatalf("Find(%s) resolved removed command", name)
 		}
-	}
-}
-
-func TestRootKeepsReportAsHiddenAlias(t *testing.T) {
-	root := cli.NewRoot(context.Background())
-	cmd, _, err := root.Find([]string{"report"})
-	if err != nil || cmd == nil || cmd.Name() != "report" {
-		t.Fatalf("Find(report) = cmd=%v err=%v, want the hidden report alias", cmd, err)
-	}
-	if !cmd.Hidden {
-		t.Fatal("gx report should be hidden after folding into gx doctor --report")
 	}
 }
 

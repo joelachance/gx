@@ -347,37 +347,6 @@ func TestReviewOnAnEmptyRepoNeverPassesAGate(t *testing.T) {
 	}
 }
 
-// The gx Cloud history row labels the run, and that label must not disagree
-// with the summary text stored beside it. A run whose summary says "Reviewed
-// the repository" must not be filed as a patch review.
-func TestReviewRunModeNamesTheSubjectItReviewed(t *testing.T) {
-	cases := []struct {
-		name          string
-		prompt        string
-		scopeExplicit bool
-		deep          bool
-		wholeRepo     bool
-		want          string
-	}{
-		{name: "default", want: "patch"},
-		{name: "scope", scopeExplicit: true, want: "scope"},
-		{name: "prompt", prompt: "why is auth slow?", want: "prompt"},
-		{name: "deep", deep: true, want: "deep"},
-		{name: "whole repo", wholeRepo: true, want: "repo"},
-		// The subject wins over the depth and the lens: those are recorded as
-		// their own fields, the mode is the one label.
-		{name: "whole repo and deep", wholeRepo: true, deep: true, want: "repo"},
-		{name: "whole repo and prompt", wholeRepo: true, prompt: "is there a race?", want: "repo"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := reviewRunMode(tc.prompt, tc.scopeExplicit, tc.deep, tc.wholeRepo); got != tc.want {
-				t.Fatalf("reviewRunMode() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestReviewBaseFlagSelectsTheRange(t *testing.T) {
 	root := newReviewGateRepo(t)
 	commitOnBranch(t, root)
