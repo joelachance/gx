@@ -121,11 +121,10 @@ func TestDoctorHandlesRegisteredRepoWithoutMain(t *testing.T) {
 func TestShouldSkipAutoInitForSetupCommands(t *testing.T) {
 	root := NewRoot(context.Background())
 	cases := map[string]bool{
-		"gx init":        true,
-		"gx version":     true,
-		"gx auth status": true,
-		"gx review":      true,
-		"gx doctor":      false,
+		"gx init":    true,
+		"gx version": true,
+		"gx review":  true,
+		"gx doctor":  false,
 	}
 	for path, want := range cases {
 		cmd, _, err := root.Find(strings.Fields(strings.TrimPrefix(path, "gx ")))

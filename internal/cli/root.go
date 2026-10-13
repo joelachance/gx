@@ -15,8 +15,6 @@ import (
 
 	"github.com/satoricorp/gx/internal/authoring"
 	"github.com/satoricorp/gx/internal/gxconfig"
-	"github.com/satoricorp/gx/internal/inference"
-	"github.com/satoricorp/gx/internal/postlist"
 	"github.com/satoricorp/gx/internal/vcs"
 	"github.com/satoricorp/gx/internal/version"
 )
@@ -34,14 +32,7 @@ func NewRoot(ctx context.Context) *cobra.Command {
 			if strings.Contains(cmd.CommandPath(), "__") {
 				return nil
 			}
-			inference.ApplyToEnvironment()
 			return ensureAutoInitializedRepo(ctx, engine, cmd)
-		},
-		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if strings.Contains(cmd.CommandPath(), "__") {
-				return
-			}
-			maybeSelfUpdate(ctx, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printInitNoteIfNeeded(cmd)
@@ -62,15 +53,11 @@ func NewRoot(ctx context.Context) *cobra.Command {
 		newInternalHooksCommand(ctx),
 		newVersionCommand(),
 		newDoctorCommand(ctx),
-		newAuthCommand(ctx),
 		newInitCommand(ctx, engine),
 		newCaptureCommand(ctx),
-		newPublishUploadCommand(ctx),
-		newReportCommand(ctx),
 		newReviewCommand(ctx),
 		newEnhanceCommand(ctx),
 		newIndexCommand(ctx),
-		newUpdateCommand(ctx),
 	)
 	assignCommandGroups(root)
 	rootRef := root
@@ -93,11 +80,11 @@ func NewRoot(ctx context.Context) *cobra.Command {
 func assignCommandGroups(root *cobra.Command) {
 	for _, cmd := range root.Commands() {
 		switch cmd.Name() {
-		case "init", "auth":
+		case "init":
 			cmd.GroupID = groupSetup
 		case "review", "enhance":
 			cmd.GroupID = groupWork
-		case "doctor", "version", "update":
+		case "doctor", "version":
 			cmd.GroupID = groupHelp
 		}
 	}
@@ -172,16 +159,6 @@ func newInitCommand(ctx context.Context, engine *authoring.Engine) *cobra.Comman
 					fmt.Fprintln(cmd.OutOrStdout(), labelValue("Configured", fmt.Sprintf("gx identity as %s <%s>", result.IdentityName, result.IdentityEmail)))
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), labelValue("Using", fmt.Sprintf("gx identity %s <%s>", result.IdentityName, result.IdentityEmail)))
-				}
-				if client := postlist.NewFromEnv(); client != nil {
-					err := client.UpsertIdentity(ctx, postlist.Identity{
-						Name:      result.IdentityName,
-						Email:     result.IdentityEmail,
-						GxVersion: version.Current(),
-					})
-					if err != nil {
-						fmt.Fprintln(cmd.ErrOrStderr(), danger(fmt.Sprintf("gx signup upload failed: %v", err)))
-					}
 				}
 			}
 			installHook := installCaptureHook

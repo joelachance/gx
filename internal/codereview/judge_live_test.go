@@ -48,7 +48,7 @@ func liveJudgeRequest() judgeRequest {
 				Title:          "Poll loop crashes when the answer file disappears",
 				Summary:        "`internal/app/poll.go` stats the file and then reads it. Only the JSON decode error is handled, so the read error from a file deleted in between escapes the loop and crashes the process.",
 				Recommendation: "Handle the read error explicitly instead of letting it escape.",
-				Evidence:       []string{"Reviewer: Bedrock A", "internal/app/poll.go:12"},
+				Evidence:       []string{"Reviewer: Reviewer A", "internal/app/poll.go:12"},
 				NamedFiles:     []string{"internal/app/poll.go"},
 			},
 			{
@@ -63,22 +63,20 @@ func liveJudgeRequest() judgeRequest {
 }
 
 // liveJudgeVerdicts runs one real judge call and returns the parsed reply, or
-// skips when this machine cannot reach Bedrock.
-func liveJudgeVerdicts(t *testing.T) (bedrockCompletion, []judgeResult, judgeRequest) {
+// skips when this machine has no key for the judge's model.
+func liveJudgeVerdicts(t *testing.T) (modelCompletion, []judgeResult, judgeRequest) {
 	t.Helper()
-	// Billable Bedrock inference, so reaching it has to be asked for rather
-	// than inherited from whichever AWS profile the shell happens to carry.
+	// Billable inference, so reaching it has to be asked for rather than
+	// inherited from whichever key the shell happens to carry.
 	gxtest.RequireNoNetwork(t)
-	if _, err := bedrockCredentialsFromEnv(); err != nil {
-		t.Skipf("no AWS credentials; skipping live judge test (%v)", err)
-	}
-	plan, err := resolveBedrockTransportPlan()
+	model := resolveJudgeModel()
+	transport, err := transportForModel(model)
 	if err != nil {
-		t.Skipf("no Bedrock transport; skipping live judge test (%v)", err)
+		t.Skipf("no key for the judge model; skipping live judge test (%v)", err)
 	}
 	// Built directly rather than through judgeFromEnvWithPolicy, which TestMain
 	// disables for the rest of the suite.
-	client := newBedrockReviewer(plan.newTransport(), resolveBedrockJudgeModel())
+	client := newModelReviewer(transport, model)
 
 	request := liveJudgeRequest()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

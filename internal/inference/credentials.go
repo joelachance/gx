@@ -114,21 +114,6 @@ func EnvVars() map[string]string {
 	}
 }
 
-func ApplyToEnvironment() {
-	creds, ok := Resolve()
-	if !ok {
-		return
-	}
-	switch creds.Provider {
-	case ProviderAnthropic:
-		_ = os.Setenv("ANTHROPIC_API_KEY", creds.APIKey)
-		_ = os.Unsetenv("OPENAI_API_KEY")
-	case ProviderOpenAI:
-		_ = os.Setenv("OPENAI_API_KEY", creds.APIKey)
-		_ = os.Unsetenv("ANTHROPIC_API_KEY")
-	}
-}
-
 func NormalizeProvider(provider string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case ProviderAnthropic, "claude":

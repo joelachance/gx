@@ -94,7 +94,7 @@ func ParsePRSummaryReview(content string, brief ReviewBrief) (PRSummaryReview, e
 //
 // This is the reviewer's half of a guarantee that was lost with the OpenAI
 // reviewer. That path could set response_format:json_object and be handed a bare
-// object every time; bedrock-runtime has no equivalent, so a leg is free to
+// object every time; neither wire enforces one, so a leg is free to
 // answer with ```json ... ``` whenever it feels like it. It is not a rare shape:
 // the first live cloud review run failed on BOTH legs at once with "invalid
 // character '`' looking for beginning of value", which is a review that produces

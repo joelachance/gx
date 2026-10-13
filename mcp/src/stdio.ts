@@ -3,7 +3,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import gxReview, { metadata as reviewMetadata, schema as reviewSchema } from "./tools/gx-review";
-import { withUpdateNotice } from "./update";
 
 type ToolModule = {
   metadata: {
@@ -20,7 +19,7 @@ const instructions = [
   "It never initializes a repository; if the repo is not set up for gx yet, run gx init there first.",
   "Save work with plain Git: git add, then git commit. gx installs Git hooks that stamp each commit with its gx revision trailer and record it, so no gx-specific commit verb is needed.",
   "To amend the latest commit message or restage work, use git commit --amend and preserve the gx revision trailer.",
-  "Publish with plain git push, then open the PR with gh pr create. The gx pre-push hook captures the agent session, links edits to the changed hunks, and publishes the gx metadata that becomes the PR summary. Do not run gx push or gx capture push; they bypass or suppress that hook.",
+  "Publish with plain git push, then open the PR with gh pr create. The gx pre-push hook captures the agent session and links its edits to the changed hunks. Do not run gx capture push; it bypasses that hook.",
   "Run gx_review for better codegen context from local facts, previous sessions, PRs, and current code changes.",
   "Use git status for inspection.",
 ].join(" ");
@@ -82,7 +81,7 @@ async function main() {
         inputSchema: z.object(tool.schema),
         annotations: tool.metadata.annotations,
       },
-      async (args, extra) => toCallToolResult(await withUpdateNotice(await tool.handler(args as Record<string, unknown>, extra))),
+      async (args, extra) => toCallToolResult(await tool.handler(args as Record<string, unknown>, extra)),
     );
   }
 

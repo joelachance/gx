@@ -283,8 +283,8 @@ func TestParsePRSummaryReviewStorySurvivesFencedJSON(t *testing.T) {
 
 func TestMultiAIReviewerCarriesStoryOrderedByMateriality(t *testing.T) {
 	reviewer := multiAIReviewer{reviewers: []namedAIReviewer{
-		{name: "bedrock-a", label: "Bedrock A", reviewer: cannedAIReviewer{payload: `{"recommendations":[]}`}},
-		{name: "bedrock-b", label: "Bedrock B", reviewer: cannedAIReviewer{payload: `{
+		{name: "reviewer-a", label: "Reviewer A", reviewer: cannedAIReviewer{payload: `{"recommendations":[]}`}},
+		{name: "reviewer-b", label: "Reviewer B", reviewer: cannedAIReviewer{payload: `{
 			"story":[
 				{"headline":"low first","category":"decision","materiality":"low","consequence":"c"},
 				{"headline":"then high","category":"behavior_delta","materiality":"high","consequence":"c"}

@@ -42,6 +42,8 @@ const driftContent = "package gamma\n\nfunc GammaThree() int {\n\treturn 3\n}\n"
 // on the empty-root_path row, which is what forces the bundle read to cross the
 // write/read identity boundary rather than trivially agreeing with it.
 func TestRunPushPublishesSessionsOnAWeatheredDatabase(t *testing.T) {
+	// These assert on the published artifact, which needs a gx Cloud.
+	t.Setenv("GX_CLOUD_URL", "https://cloud.example.invalid")
 	ctx := context.Background()
 	world := gxtest.NewWorld(t)
 	repo := world.NewRepo(t)
@@ -70,10 +72,7 @@ func TestRunPushPublishesSessionsOnAWeatheredDatabase(t *testing.T) {
 	refRange := repo.RefRange(t, base, commit.SHA)
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: repo.Root,
-		Remote:   "origin",
-		LocalRef: "refs/heads/main",
 		RefRange: refRange,
-		HeadSHA:  commit.SHA,
 		HomeDir:  world.Home,
 		Tools:    []string{"claude"},
 	})
@@ -106,18 +105,8 @@ func TestRunPushPublishesSessionsOnAWeatheredDatabase(t *testing.T) {
 		t.Fatalf("the row the push wrote to has root_path=%q, want empty", row.RootPath)
 	}
 
-	sessions := outcome.Publication.Artifact.Sessions
-	if len(sessions) != 1 || sessions[0].ID != driftConversation {
-		t.Fatalf("artifact sessions = %+v, want [%s]: the bundle resolved a different repos row than the attach did",
-			sessions, driftConversation)
-	}
-	if sessions[0].Command != "claude" {
-		t.Fatalf("session command = %q, want claude", sessions[0].Command)
-	}
-
-	rebuilt := buildPushBundle(t, ctx, repo.Root, refRange, commit.SHA)
-	if len(rebuilt.Sessions) != 1 || rebuilt.Sessions[0].ID != driftConversation {
-		t.Fatalf("rebuilt bundle sessions = %+v, want the attached session", rebuilt.Sessions)
+	if ids := sessionIDsForCommit(t, ctx, repo.Root, commit.SHA); len(ids) != 1 || ids[0] != driftConversation {
+		t.Fatalf("sessions linked to the pushed commit = %v, want [%s]: the attach resolved a different repos row", ids, driftConversation)
 	}
 
 	// storage.Open ran several times inside the push, so the fossil an older
@@ -147,6 +136,8 @@ func TestRunPushPublishesSessionsOnAWeatheredDatabase(t *testing.T) {
 // combination that made the bug survive: the worktree root is not in `repos` at
 // all, and the row that is has the wrong root_path.
 func TestRunPushFromLinkedWorktreeOnAWeatheredDatabase(t *testing.T) {
+	// These assert on the published artifact, which needs a gx Cloud.
+	t.Setenv("GX_CLOUD_URL", "https://cloud.example.invalid")
 	ctx := context.Background()
 	world := gxtest.NewWorld(t)
 	main := world.NewRepo(t)
@@ -171,10 +162,7 @@ func TestRunPushFromLinkedWorktreeOnAWeatheredDatabase(t *testing.T) {
 	refRange := worktree.RefRange(t, base, commit.SHA)
 	outcome, err := hooks.RunPush(ctx, hooks.PushOptions{
 		RepoRoot: worktree.Root,
-		Remote:   "origin",
-		LocalRef: "refs/heads/feature",
 		RefRange: refRange,
-		HeadSHA:  commit.SHA,
 		HomeDir:  world.Home,
 		Tools:    []string{"claude"},
 	})
@@ -192,13 +180,8 @@ func TestRunPushFromLinkedWorktreeOnAWeatheredDatabase(t *testing.T) {
 		t.Fatalf("repos rows for the worktree root = %d, want 0: linked worktrees share the main repo's row on purpose", n)
 	}
 
-	sessions := outcome.Publication.Artifact.Sessions
-	if len(sessions) != 1 || sessions[0].ID != driftConversation {
-		t.Fatalf("artifact sessions = %+v, want [%s]", sessions, driftConversation)
-	}
-	rebuilt := buildPushBundle(t, ctx, worktree.Root, refRange, commit.SHA)
-	if len(rebuilt.Sessions) != 1 || rebuilt.Sessions[0].ID != driftConversation {
-		t.Fatalf("rebuilt bundle sessions = %+v, want the attached session", rebuilt.Sessions)
+	if ids := sessionIDsForCommit(t, ctx, worktree.Root, commit.SHA); len(ids) != 1 || ids[0] != driftConversation {
+		t.Fatalf("sessions linked to the pushed commit = %v, want [%s]", ids, driftConversation)
 	}
 }
 

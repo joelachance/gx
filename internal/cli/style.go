@@ -11,7 +11,6 @@ import (
 	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/inference"
 	"github.com/satoricorp/gx/internal/termstyle"
 )
@@ -94,23 +93,14 @@ func helpBodyTemplate() string {
 func printRootIntro(out io.Writer) {
 	fmt.Fprintln(out, renderStaticLogo())
 	fmt.Fprintln(out, muted(gxTagline))
-	fmt.Fprintln(out, rootAuthStatusLine())
 	fmt.Fprintln(out, rootInferenceStatusLine())
 	fmt.Fprintln(out)
-}
-
-func rootAuthStatusLine() string {
-	creds, err := cloud.LoadCloudCredentials()
-	if err == nil && authKindForCredentials(creds) != "none" && strings.TrimSpace(creds.Login) != "" {
-		return success("●") + " " + value("Signed in as "+strings.TrimSpace(creds.Login))
-	}
-	return danger("●") + " " + muted("Not signed in") + "  " + logoText("gx auth login")
 }
 
 func rootInferenceStatusLine() string {
 	creds, ok := inference.Resolve()
 	if !ok {
-		return danger("●") + " " + muted("API Key required. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+		return danger("●") + " " + muted("API Key required. Set ANTHROPIC_API_KEY or OPENAI_API_KEY to review with a model.")
 	}
 	return success("●") + " " + value("Using "+creds.Provider+": "+maskedAPIKey(creds.APIKey))
 }
@@ -270,7 +260,7 @@ func orderedHelpCommands(commands []*cobra.Command, groupID string) []*cobra.Com
 func rootHelpCommandOrder(groupID string) []string {
 	switch groupID {
 	case groupSetup:
-		return []string{"init", "auth"}
+		return []string{"init"}
 	case groupWork:
 		return []string{"review"}
 	case groupHelp:

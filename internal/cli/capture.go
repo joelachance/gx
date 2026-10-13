@@ -13,12 +13,10 @@ import (
 
 	"github.com/satoricorp/gx/internal/capture"
 	"github.com/satoricorp/gx/internal/capture/claudehooks"
-	"github.com/satoricorp/gx/internal/capture/extract"
 	"github.com/satoricorp/gx/internal/capture/orchestrator"
 	"github.com/satoricorp/gx/internal/capture/reparse"
 	"github.com/satoricorp/gx/internal/hooks"
 	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/uploadauth"
 )
 
 func newCaptureCommand(ctx context.Context) *cobra.Command {
@@ -28,50 +26,9 @@ func newCaptureCommand(ctx context.Context) *cobra.Command {
 		Hidden: true,
 	}
 	cmd.AddCommand(newCapturePushCommand(ctx))
-	cmd.AddCommand(newCaptureSyncCommand(ctx))
 	cmd.AddCommand(newCaptureReparseCommand(ctx))
 	cmd.AddCommand(newCaptureTranscriptCommand(ctx))
 	return cmd
-}
-
-func newCaptureSyncCommand(ctx context.Context) *cobra.Command {
-	var quiet bool
-	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Upload shareable capture staging rows to the gx server",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCaptureSync(ctx, cmd.OutOrStdout(), quiet)
-		},
-	}
-	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress upload summary")
-	return cmd
-}
-
-func runCaptureSync(ctx context.Context, out interface{ Write([]byte) (int, error) }, quiet bool) error {
-	creds, ok := uploadauth.Load()
-	if !ok {
-		if quiet {
-			return nil
-		}
-		return fmt.Errorf("not logged in for capture upload — run `gx auth login`")
-	}
-	stager, err := storage.OpenCaptureStager(ctx)
-	if err != nil {
-		return err
-	}
-	result, err := extract.SyncPending(ctx, stager, creds)
-	if err != nil {
-		return err
-	}
-	if !quiet {
-		fmt.Fprintf(out, "capture sync: extracts=%d sessions=%d errors=%d/%d\n",
-			result.ExtractsUploaded,
-			result.SessionsUploaded,
-			result.ExtractErrors+result.SessionErrors,
-			result.ExtractErrors+result.SessionErrors+result.ExtractsUploaded+result.SessionsUploaded,
-		)
-	}
-	return nil
 }
 
 // runPushHook is a seam for tests: the real hook runner needs a git repo and a
@@ -82,13 +39,15 @@ var runPushHook = hooks.RunPush
 func newCapturePushCommand(ctx context.Context) *cobra.Command {
 	var (
 		repoRoot string
-		remote   string
 		refRange string
 		base     string
 		head     string
-		localRef string
-		headSHA  string
 		tools    string
+		// Passed by the pre-push hook scripts already installed in users'
+		// repositories, and no longer used. They stay accepted, hidden: an
+		// unknown flag would fail the hook, and its `|| true` would hide that
+		// capture had stopped.
+		remote, localRef, headSHA string
 	)
 	cmd := &cobra.Command{
 		Use:   "push",
@@ -97,12 +56,9 @@ func newCapturePushCommand(ctx context.Context) *cobra.Command {
 			toolList := splitCaptureTools(tools)
 			outcome, err := runPushHook(ctx, hooks.PushOptions{
 				RepoRoot: repoRoot,
-				Remote:   remote,
 				RefRange: refRange,
 				Base:     base,
 				Head:     head,
-				LocalRef: localRef,
-				HeadSHA:  headSHA,
 				Tools:    toolList,
 			})
 			// The command still exits 0 — it runs inside a git hook and must
@@ -121,13 +77,12 @@ func newCapturePushCommand(ctx context.Context) *cobra.Command {
 			if outcome.SkipReason != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "capture skipped: %s\n", outcome.SkipReason)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "capture staged extract=%s sessions=%d coverage=%.1f%% ref=%s shareable=%d/%d\n",
+				fmt.Fprintf(cmd.OutOrStdout(), "capture staged extract=%s sessions=%d coverage=%.1f%% ref=%s attached=%d\n",
 					result.StagedExtractID,
 					result.StagedSessions,
 					result.HunkCoverage*100,
 					result.RefRange,
-					outcome.ShareableExtract,
-					outcome.ShareableSession,
+					outcome.AttachedSessions,
 				)
 				// Zero coverage with sessions on disk and work in the range is
 				// not a hand-written change; it is capture reading a
@@ -140,41 +95,14 @@ func newCapturePushCommand(ctx context.Context) *cobra.Command {
 					)))
 				}
 			}
-			if outcome.Publication.Queued {
-				fmt.Fprintf(cmd.OutOrStdout(), "publication queued id=%s\n", outcome.Publication.QueueID)
-			}
 			if outcome.CaptureError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: capture failed, so this push has no session context: %s\n", outcome.CaptureError)
-			}
-			if outcome.ShareableError != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: capture rows staged but not marked uploadable: %s\n", outcome.ShareableError)
 			}
 			if outcome.RecoveryError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: repair gx revision metadata: %s\n", outcome.RecoveryError)
 			}
 			if outcome.AttachError != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: this push's review artifact will list no sessions: %s\n", outcome.AttachError)
-			}
-			if outcome.PublicationError != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: this push queued no gx review artifact: %s\n", outcome.PublicationError)
-			}
-			// Caught in the pre-flight before the upload worker is spawned:
-			// once detached, the worker's output and exit code are discarded,
-			// so a blocker reported anywhere but here stays invisible.
-			if outcome.CloudUploadBlocked != "" {
-				if outcome.QueuedUploads > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d queued gx artifact(s) will not upload: %s\n",
-						outcome.QueuedUploads, outcome.CloudUploadBlocked)
-				} else {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: gx artifacts will not upload: %s\n",
-						outcome.CloudUploadBlocked)
-				}
-			}
-			// Uploads happen in a detached process whose output goes nowhere,
-			// so this is the only place a failing upload can reach a human.
-			if failures := outcome.UploadFailures; failures.Total() > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d capture upload(s) failed (%d gave up after %d attempts): %s\n",
-					failures.Total(), failures.ExhaustedRows, storage.MaxUploadAttempts, failures.LastError)
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: this push's sessions were not linked to its commits: %s\n", outcome.AttachError)
 			}
 			// One tool being unavailable is survivable but never silent: it
 			// means this push carries less session context than it could.
@@ -185,13 +113,16 @@ func newCapturePushCommand(ctx context.Context) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&repoRoot, "repo", "", "repository root (default: current directory)")
-	cmd.Flags().StringVar(&remote, "remote", "origin", "git remote name")
 	cmd.Flags().StringVar(&refRange, "ref-range", "", "git ref range (e.g. abc..def)")
 	cmd.Flags().StringVar(&base, "base", "", "base ref when ref-range omitted")
 	cmd.Flags().StringVar(&head, "head", "", "head ref when ref-range omitted")
-	cmd.Flags().StringVar(&localRef, "local-ref", "", "local ref name from pre-push stdin")
-	cmd.Flags().StringVar(&headSHA, "head-sha", "", "local commit SHA from pre-push stdin")
 	cmd.Flags().StringVar(&tools, "tools", "claude,codex,cursor", "comma-separated capture tools")
+	cmd.Flags().StringVar(&remote, "remote", "", "ignored")
+	cmd.Flags().StringVar(&localRef, "local-ref", "", "ignored")
+	cmd.Flags().StringVar(&headSHA, "head-sha", "", "ignored")
+	for _, name := range []string{"remote", "local-ref", "head-sha"} {
+		_ = cmd.Flags().MarkHidden(name)
+	}
 	return cmd
 }
 

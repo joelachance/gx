@@ -34,10 +34,6 @@ const (
 	// existed: turning it off degrades to the old output, never to a wrong one.
 	ruleSortEnvVar      = "GX_REVIEW_RULE_SORT"
 	ruleSortModelEnvVar = "GX_REVIEW_RULE_SORT_MODEL"
-	// defaultRuleSortModel is the cheap tier on purpose. Sorting an existing,
-	// already-verified finding into a named bucket is a much smaller job than
-	// finding it or checking it, and it runs off the critical path of both.
-	defaultRuleSortModel = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 	// defaultRuleSortMaxOutputTokens is sized for a short reason plus a slug per
 	// finding, not for prose.
 	defaultRuleSortMaxOutputTokens = 8000
@@ -55,8 +51,8 @@ type RuleSorter interface {
 	Sort(ctx context.Context, req ruleSortRequest) ([]ruleSortResult, error)
 }
 
-type bedrockRuleSorter struct {
-	client *bedrockAnthropicReviewer
+type modelRuleSorter struct {
+	client *modelReviewer
 }
 
 type unavailableRuleSorter struct {
@@ -134,24 +130,22 @@ func ruleSorterFromEnv() RuleSorter {
 	if ruleSortDisabledFromEnv() {
 		return nil
 	}
-	plan, err := resolveBedrockTransportPlan()
+	model := resolveRuleSortModel()
+	transport, err := transportForModel(model)
 	if err != nil {
 		return unavailableRuleSorter{reason: err.Error()}
 	}
-	return bedrockRuleSorter{client: newBedrockReviewer(plan.newTransport(), resolveRuleSortModel())}
+	return modelRuleSorter{client: newModelReviewer(transport, model)}
 }
 
 func ruleSortDisabledFromEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv(ruleSortEnvVar)), "0")
 }
 
-// resolveRuleSortModel applies env > default. Like the judge, the reviewed
+// resolveRuleSortModel applies env > panel. Like the judge, the reviewed
 // repository gets no say in it.
 func resolveRuleSortModel() string {
-	return normalizeBedrockModelID(firstNonEmpty(
-		os.Getenv(ruleSortModelEnvVar),
-		defaultRuleSortModel,
-	))
+	return strings.TrimSpace(firstNonEmpty(os.Getenv(ruleSortModelEnvVar), activeModelPreset().RuleSort))
 }
 
 func resolveRuleSortBatchSize() int {
@@ -163,7 +157,7 @@ func resolveRuleSortBatchSize() int {
 	return defaultRuleSortBatchSize
 }
 
-func (s bedrockRuleSorter) Available() bool { return s.client != nil }
+func (s modelRuleSorter) Available() bool { return s.client != nil }
 
 func (s unavailableRuleSorter) Available() bool { return false }
 
@@ -171,7 +165,7 @@ func (s unavailableRuleSorter) Sort(context.Context, ruleSortRequest) ([]ruleSor
 	return nil, fmt.Errorf("rule sorter is unavailable: %s", s.reason)
 }
 
-func (s bedrockRuleSorter) Sort(ctx context.Context, req ruleSortRequest) ([]ruleSortResult, error) {
+func (s modelRuleSorter) Sort(ctx context.Context, req ruleSortRequest) ([]ruleSortResult, error) {
 	if s.client == nil {
 		return nil, fmt.Errorf("rule sorter is not configured")
 	}

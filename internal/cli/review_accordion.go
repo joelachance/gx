@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -599,4 +600,10 @@ func plural(n int, unit string) string {
 		return fmt.Sprintf("1 %s", unit)
 	}
 	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(text string) string {
+	return ansiEscapePattern.ReplaceAllString(text, "")
 }

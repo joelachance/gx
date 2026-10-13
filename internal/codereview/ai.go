@@ -74,52 +74,6 @@ const (
 	maxAIChangedFiles     = 400
 )
 
-// The review composition: two competing Bedrock reviewers plus an independent
-// Bedrock judge.
-//
-// Two flagship reviewers cost max(A,B) in wall clock, not A+B, because
-// multiAIReviewer already runs its legs concurrently — so the second opinion is
-// close to free in latency and only costs tokens. Both reviewer legs MUST be
-// 1M-context models: repo-mode review briefs regularly exceed 200K tokens, and
-// a 200K leg (the previous default, Opus 4.5) fails every batch with "prompt is
-// too long" rather than degrading. The pair is Opus + Sonnet across tiers
-// rather than two same-tier siblings, so the second reviewer's misses are less
-// correlated with the first's. It would ideally also span generations, but as
-// of 2026-08 the 4.6 family is the only 1M-context generation this deployment's
-// AWS account has Bedrock access to — when Opus 4.7+/Sonnet 5 access is granted
-// in the Bedrock console, prefer moving leg B there (or override with
-// GX_REVIEW_BEDROCK_MODEL_B).
-//
-// The judge would ideally be a third model — it decides which candidate
-// findings survive, and a model grading its own output is not a filter.
-// 2026-08-23: the judge moved from Sonnet 4.6 to Haiku to cut per-review
-// spend — verification is the per-finding call, which is where cost
-// concentrates. Haiku's 200K context is enough here because judge batches are
-// byte-bounded (maxJudgeBatchBytes + maxJudgeDiffBatchBytes, windowed around
-// each finding); the 2026-08-04 "Input is too long" failures that once forced
-// a 1M-context judge predate that windowing, and Haiku's 64K output ceiling
-// clears defaultJudgeMaxOutputTokens. Sharing Haiku with leg A is the same
-// compromise the Sonnet judge made with leg B — leg B's findings are still
-// judged by a model that did not write them, and GX_REVIEW_JUDGE_MODEL gives
-// the judge its own model when wanted.
-//
-// Every ID here MUST be the `us.`-prefixed inference profile form. Bare
-// `anthropic.*` model IDs are rejected by bedrock-runtime for on-demand
-// invocation ("Invocation of model ID ... with on-demand throughput isn't
-// supported"), which the previous default silently was — the Anthropic reviewer
-// could never have run. normalizeBedrockModelID enforces this for overrides too,
-// and TestDefaultBedrockModelsAreInferenceProfiles is the regression test.
-const (
-	defaultBedrockReviewModelA = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-	defaultBedrockReviewModelB = "us.anthropic.claude-sonnet-4-6" // 1M context: the repo-mode safety net
-	defaultBedrockJudgeModel   = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-	// defaultBedrockRegion was us-east-1, which is not where these inference
-	// profiles are enabled for this deployment; a model that exists in one
-	// region reports as "The provided model identifier is invalid" in another,
-	// which reads like a bad model name rather than a bad region.
-	defaultBedrockRegion = "us-west-2"
-)
-
 type AIReviewer interface {
 	Review(ctx context.Context, brief ReviewBrief) ([]Finding, error)
 }
@@ -153,8 +107,8 @@ type AIReviewerWithSummary interface {
 
 type ReviewerInfo struct {
 	Models []string
-	// Transport is how the panel reached bedrock-runtime, phrased for a human
-	// ("gx Cloud (https://api.gx.run)" / "direct AWS credentials (us-west-2)").
+	// Transport is how the panel reached its providers, phrased for a human
+	// ("Anthropic API (api.anthropic.com)").
 	// It is reported rather than inferred because the two have different
 	// latency and different failure modes, and a review that does not say which
 	// one ran leaves both questions unanswerable after the fact.
@@ -256,13 +210,13 @@ func reviewerInfoFromReviewer(reviewer AIReviewer) ReviewerInfo {
 }
 
 func reviewerModelName(reviewer AIReviewer) string {
-	if r, ok := reviewer.(*bedrockAnthropicReviewer); ok && r != nil {
+	if r, ok := reviewer.(*modelReviewer); ok && r != nil {
 		return strings.TrimSpace(r.model)
 	}
 	return ""
 }
 
-// ReviewerTransport is the human phrase for how this reviewer reaches Bedrock,
+// ReviewerTransport is the human phrase for how this reviewer reaches its model,
 // or "" when it has no transport (no reviewer, or a test double).
 func ReviewerTransport(reviewer AIReviewer) string {
 	if multi, ok := reviewer.(multiAIReviewer); ok {
@@ -273,21 +227,21 @@ func ReviewerTransport(reviewer AIReviewer) string {
 		}
 		return ""
 	}
-	if r, ok := reviewer.(*bedrockAnthropicReviewer); ok && r != nil && r.transport != nil {
+	if r, ok := reviewer.(*modelReviewer); ok && r != nil && r.transport != nil {
 		return r.transport.detail()
 	}
 	return ""
 }
 
-// reviewerFromEnv builds the review panel: two competing Bedrock
-// reviewers that run concurrently. There is no other provider.
+// reviewerFromEnv builds the review panel: two competing reviewers that run
+// concurrently, each on the wire its model names: the Anthropic API for Claude
+// models and the OpenAI API for the rest.
 //
-// The OpenAI reviewer and its cloud proxy used to live here as a fallback and
-// were deleted rather than left dormant. Bedrock is the only review provider,
-// so a second one would only ever be reached when the first was misconfigured —
-// and a fallback that answers when the configured reviewer cannot is precisely
-// what makes a broken configuration invisible. Missing AWS credentials must read
-// as "no reviewer ran", not as a clean review from a model nobody asked for.
+// There is no fallback between wires. The OpenAI reviewer and its cloud proxy
+// used to live here as one and were deleted rather than left dormant: a
+// fallback that answers when the configured reviewer cannot is precisely what
+// makes a broken configuration invisible. Missing credentials must read as "no
+// reviewer ran", not as a clean review from a model nobody asked for.
 //
 // Embeddings are unaffected: internal/semantic reads OPENAI_API_KEY directly
 // (see defaultEmbedderFactory in turbopuffer_index.go) and never goes through an
@@ -307,19 +261,7 @@ func reviewerFromEnvFast(fast bool) AIReviewer {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("GX_REVIEW_AI")), "0") {
 		return nil
 	}
-	plan, err := resolveBedrockTransportPlan()
-	if err != nil {
-		// Both legs carry the same actionable reason, so whichever one a caller
-		// inspects says what to fix.
-		return multiAIReviewer{
-			reviewers: []namedAIReviewer{
-				{name: "bedrock-a", label: "Bedrock A", reviewer: unavailableAIReviewer{reason: err.Error()}},
-				{name: "bedrock-b", label: "Bedrock B", reviewer: unavailableAIReviewer{reason: err.Error()}},
-			},
-			legFailures: newLegFailureLog(),
-		}
-	}
-	modelA, modelB := resolveBedrockReviewModels()
+	modelA, modelB := resolveReviewModels()
 	if fast {
 		// One leg, and it is leg A: the panel exists so two models' misses are
 		// uncorrelated, and keeping whichever leg the operator configured first
@@ -330,32 +272,28 @@ func reviewerFromEnvFast(fast bool) AIReviewer {
 			modelA, modelB = modelB, ""
 		}
 	}
-	// A leg's transport follows its model: openai:-prefixed models go to the
-	// OpenAI API, everything else rides the resolved Bedrock plan. A missing
-	// OPENAI_API_KEY surfaces as that leg being unavailable with the fix in
-	// the reason, never as a silently absent reviewer.
+	// Each leg's wire follows its model. A missing key surfaces as that leg
+	// being unavailable with the fix in the reason, never as a silently absent
+	// reviewer.
 	buildLeg := func(name, slot, model string) namedAIReviewer {
-		if modelUsesOpenAI(model) {
-			transport, err := newOpenAITransport()
-			if err != nil {
-				return namedAIReviewer{name: name, label: bedrockLegLabel(slot, model, "openai"), reviewer: unavailableAIReviewer{reason: err.Error()}}
-			}
-			return namedAIReviewer{name: name, label: bedrockLegLabel(slot, model, "openai"), reviewer: newBedrockReviewer(transport, model)}
+		transport, err := transportForModel(model)
+		if err != nil {
+			return namedAIReviewer{name: name, label: slot, reviewer: unavailableAIReviewer{reason: err.Error()}}
 		}
-		return namedAIReviewer{name: name, label: bedrockLegLabel(slot, model, plan.Kind), reviewer: newBedrockReviewer(plan.newTransport(), model)}
+		return namedAIReviewer{name: name, label: legLabel(slot, model), reviewer: newModelReviewer(transport, model)}
 	}
 	var reviewers []namedAIReviewer
 	if modelA != "" {
-		reviewers = append(reviewers, buildLeg("bedrock-a", "Bedrock A", modelA))
+		reviewers = append(reviewers, buildLeg("reviewer-a", "Reviewer A", modelA))
 	}
 	if modelB != "" {
-		reviewers = append(reviewers, buildLeg("bedrock-b", "Bedrock B", modelB))
+		reviewers = append(reviewers, buildLeg("reviewer-b", "Reviewer B", modelB))
 	}
 	if len(reviewers) == 0 {
 		// Both legs off is a configuration mistake, not a request for a review
 		// with no reviewer: say so rather than reporting a clean review.
-		reviewers = append(reviewers, namedAIReviewer{name: "bedrock-a", label: "Bedrock A", reviewer: unavailableAIReviewer{
-			reason: "every Bedrock review leg is disabled; set GX_REVIEW_BEDROCK_MODEL_A to a model ID",
+		reviewers = append(reviewers, namedAIReviewer{name: "reviewer-a", label: "Reviewer A", reviewer: unavailableAIReviewer{
+			reason: "every review leg is disabled; set GX_REVIEW_MODEL_A to a model ID",
 		}})
 	}
 	panel := multiAIReviewer{
@@ -421,8 +359,8 @@ func reviewerUnavailableReason(item namedAIReviewer) string {
 
 // ReviewerUnavailableReason is why no AI reviewer can run, or "" if one can.
 //
-// Bedrock is now the only review provider, so an unavailable reviewer means no
-// review happened at all — there is nothing left to fall back to. The engine
+// An unavailable reviewer means no review happened at all — there is nothing
+// to fall back to. The engine
 // reported that as "AI reviewer not configured", which named neither the
 // provider nor the fix; the reviewer already carries a sentence that does both,
 // and this is how the engine reaches it.
@@ -1012,21 +950,21 @@ func formatReviewerDegradation(err error) string {
 	return msg
 }
 
-// CloudSessionRequired reports whether a review, as this environment is
-// configured, needs a gx Cloud session to review anything at all.
+// NoReviewerReason says why a review, as this environment is configured, has
+// no model to review with, or returns "" when at least one reviewer leg can
+// run. Turning the AI panel off with GX_REVIEW_AI=0 is not a missing reviewer:
+// the deterministic rules alone are still a real review.
 //
-// It is false in exactly the two cases where a signed-out review is still a
-// real review: the caller has explicitly turned the AI panel off and wants the
-// deterministic rules only, or they have opted into their own AWS account with
-// GX_REVIEW_BEDROCK_DIRECT and are not using gx Cloud as a wire.
-//
-// Everywhere else, no session means no reviewer: resolveBedrockTransportPlan
-// fails, both legs come back unavailable, and the run reports DEGRADED having
-// looked at nothing with a model. The caller uses this to refuse up front
-// rather than hand back a report that reads like a review.
-func CloudSessionRequired() bool {
+// Without a reviewer, every leg comes back unavailable and the run reports
+// DEGRADED having looked at nothing with a model. The caller uses this to
+// refuse up front rather than hand back a report that reads like a review.
+func NoReviewerReason() string {
 	if !aiReviewRequestedFromEnv() {
-		return false
+		return ""
 	}
-	return !bedrockDirectRequested()
+	reviewer := reviewerFromEnv()
+	if reviewerAvailable(reviewer) {
+		return ""
+	}
+	return ReviewerUnavailableReason(reviewer)
 }
