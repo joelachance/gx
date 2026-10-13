@@ -82,7 +82,7 @@ func assignCommandGroups(root *cobra.Command) {
 		switch cmd.Name() {
 		case "init":
 			cmd.GroupID = groupSetup
-		case "review", "gates":
+		case "review", "enhance":
 			cmd.GroupID = groupWork
 		case "doctor", "version":
 			cmd.GroupID = groupHelp
