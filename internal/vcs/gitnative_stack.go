@@ -97,6 +97,7 @@ func (s *Service) gitStackEntries(ctx context.Context, repo RepoInfo) ([]stackEn
 	if out == "" {
 		return nil, nil
 	}
+	revisions := s.recordedRevisionsByCommit(ctx, repo)
 	records := strings.Split(out, "\n")
 	var entries []stackEntry
 	index := 0
@@ -107,14 +108,19 @@ func (s *Service) gitStackEntries(ctx context.Context, repo RepoInfo) ([]stackEn
 		}
 		commitID := strings.TrimSpace(parts[0])
 		message := parts[1]
-		revisionIDs := ParseRevisionIDsFromMessage(message)
-		if len(revisionIDs) == 0 {
+		revisionID := revisions[commitID]
+		if revisionID == "" {
+			if ids := ParseRevisionIDsFromMessage(message); len(ids) > 0 {
+				revisionID = ids[len(ids)-1]
+			}
+		}
+		if revisionID == "" {
 			continue
 		}
 		index++
 		subject := strings.TrimSpace(strings.Split(message, "\n")[0])
 		entries = append(entries, stackEntry{
-			ChangeID:    revisionIDs[len(revisionIDs)-1],
+			ChangeID:    revisionID,
 			CommitID:    commitID,
 			Description: subject,
 		})
@@ -129,4 +135,29 @@ func withRepoIdentityLock(commonDir string, fn func() error) error {
 	}
 	lockPath := filepath.Join(commonDir, "gx", "repo.lock")
 	return withLockFile(lockPath, fn)
+}
+
+// recordedRevisionsByCommit maps each commit ~/.gx recorded for this repository
+// to its revision.
+func (s *Service) recordedRevisionsByCommit(ctx context.Context, repo RepoInfo) map[string]string {
+	out := map[string]string{}
+	store, err := openStore(ctx)
+	if err != nil {
+		return out
+	}
+	defer store.Close()
+	repoRow, err := store.FindRepoByIdentity(ctx, repo.GitCommonDir, repo.RootPath)
+	if err != nil || repoRow == nil {
+		return out
+	}
+	changes, err := store.ListChangesByRepoID(ctx, repoRow.ID)
+	if err != nil {
+		return out
+	}
+	for _, change := range changes {
+		if commit := strings.TrimSpace(change.CurrentCommitID); commit != "" {
+			out[commit] = change.JJChangeID
+		}
+	}
+	return out
 }

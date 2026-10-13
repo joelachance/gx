@@ -18,10 +18,10 @@ import (
 // and is otherwise hard to produce on demand.
 var runCapture = orchestrator.Run
 
-// revisionIDsInGitRange is a seam for tests: a git invocation that fails
-// mid-push is real, used to abort the rest of the hook, and is not reachable on
-// demand without corrupting a repo mid-run.
-var revisionIDsInGitRange = vcs.RevisionIDsInGitRange
+// commitsInGitRange is a seam for tests: a git invocation that fails mid-push
+// is real, used to abort the rest of the hook, and is not reachable on demand
+// without corrupting a repo mid-run.
+var commitsInGitRange = vcs.CommitsInGitRange
 
 // PushOptions configures a hook-triggered capture run.
 type PushOptions struct {
@@ -48,8 +48,10 @@ type PushOptions struct {
 // But it must not be silent either — sessions that silently fail to attach
 // hid the commit-time matcher's self-referential gate for 174 pushes.
 type PushOutcome struct {
-	Result           orchestrator.Result
-	RevisionIDs      []string
+	Result orchestrator.Result
+	// RecoveredCommits counts pushed commits ~/.gx had no revision for, made
+	// while gx's hooks were not running, and recorded now.
+	RecoveredCommits int
 	SkipReason       string
 	CaptureError     string
 	RecoveryError    string
@@ -133,18 +135,18 @@ func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 	if refRange == "" && base != "" && head != "" {
 		refRange = base + ".." + head
 	}
-	revisionIDs, err := revisionIDsInGitRange(ctx, repoRoot, refRange)
+	commits, err := commitsInGitRange(ctx, repoRoot, refRange)
 	if err != nil {
-		// Revisions are a backlog convenience, not a prerequisite. Carry on
-		// with no revisions and report the scan failure.
-		outcome.RecoveryError = fmt.Sprintf("scan gx revision trailers: %v", err)
-		revisionIDs = nil
+		// Recovery is a backlog convenience, not a prerequisite. Carry on and
+		// report the scan failure.
+		outcome.RecoveryError = fmt.Sprintf("list pushed commits: %v", err)
+		commits = nil
 	}
-	outcome.RevisionIDs = revisionIDs
-
-	if len(revisionIDs) > 0 {
+	if len(commits) > 0 {
 		if repo, repoErr := vcs.NewService().ResolveGxRepoAtPath(ctx, repoRoot); repoErr == nil {
-			if _, recoverErr := vcs.NewService().RecoverMissingRevisions(ctx, repo, revisionIDs); recoverErr != nil {
+			recovered, recoverErr := vcs.NewService().RecoverMissingCommits(ctx, repo, commits)
+			outcome.RecoveredCommits = recovered
+			if recoverErr != nil {
 				outcome.RecoveryError = recoverErr.Error()
 			}
 		} else {
@@ -152,7 +154,7 @@ func RunPush(ctx context.Context, opts PushOptions) (PushOutcome, error) {
 		}
 	}
 
-	// Placement is load-bearing: RecoverMissingRevisions above guarantees the
+	// Placement is load-bearing: RecoverMissingCommits above guarantees the
 	// `changes` rows this links to exist.
 	if attached, err := attachPushSessions(ctx, repoRoot, outcome.Result.HunkLinks); err != nil {
 		outcome.AttachError = err.Error()

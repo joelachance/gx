@@ -34,7 +34,7 @@ type TranscriptMetadata struct {
 	RepoRoot   string
 	BranchName string
 	// RevisionID carries the gx revision id, falling back to the commit SHA
-	// for commits without a gx trailer.
+	// for commits gx recorded no revision for.
 	RevisionID       string
 	CommitID         string
 	RevisionTitle    string

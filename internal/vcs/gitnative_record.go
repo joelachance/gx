@@ -21,14 +21,12 @@ func (s *Service) RecordGitCommit(ctx context.Context, repo RepoInfo, commitOID 
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("read commit message: %w", err)
 	}
-	revisionIDs := ParseRevisionIDsFromMessage(message)
-	if len(revisionIDs) == 0 {
-		return CommitResult{}, fmt.Errorf("commit %s has no gx revision trailer", shortID(commitOID, 7))
-	}
-	revisionID := revisionIDs[len(revisionIDs)-1]
-	if existing, lookupErr := s.commitResultFromDB(ctx, repo, commitOID); lookupErr == nil &&
-		existing.Change.ChangeID == revisionID && existing.Change.CommitID == commitOID {
+	if existing, lookupErr := s.commitResultFromDB(ctx, repo, commitOID); lookupErr == nil {
 		return existing, nil
+	}
+	revisionID, err := s.revisionForCommit(ctx, repo, commitOID, message)
+	if err != nil {
+		return CommitResult{}, err
 	}
 	filesOut, err := s.runTrimmed(ctx, repo.RootPath, "git", "diff-tree", "--no-commit-id", "--name-only", "-r", commitOID)
 	if err != nil {
@@ -38,11 +36,8 @@ func (s *Service) RecordGitCommit(ctx context.Context, repo RepoInfo, commitOID 
 	parentOID = strings.TrimSpace(parentOID)
 	var parentChangeID *string
 	if parentOID != "" {
-		parentMessage, parentErr := s.runTrimmed(ctx, repo.RootPath, "git", "log", "-1", "--format=%B", parentOID)
-		if parentErr == nil {
-			if ids := ParseRevisionIDsFromMessage(parentMessage); len(ids) > 0 {
-				parentChangeID = &ids[len(ids)-1]
-			}
+		if parentRevision := s.recordedRevisionForCommit(ctx, repo, parentOID); parentRevision != "" {
+			parentChangeID = &parentRevision
 		}
 	}
 	subject := strings.TrimSpace(strings.Split(message, "\n")[0])
@@ -124,38 +119,22 @@ func (s *Service) RewriteGitCommitOIDs(ctx context.Context, repo RepoInfo, oldOI
 }
 
 func (s *Service) recoverGitCommitByOID(ctx context.Context, store *storage.Store, repo RepoInfo, repoRow storage.Repo, commitOID string) error {
-	message, err := s.runTrimmed(ctx, repo.RootPath, "git", "log", "-1", "--format=%B", commitOID)
-	if err != nil {
-		return nil
-	}
-	revisionIDs := ParseRevisionIDsFromMessage(message)
-	if len(revisionIDs) == 0 {
-		return nil
-	}
-	existing, err := store.FindChangeByJJChangeID(ctx, repoRow.ID, revisionIDs[len(revisionIDs)-1])
-	if err != nil {
+	if existing, err := store.FindChangeByCommitID(ctx, repoRow.ID, commitOID); err != nil || existing != nil {
 		return err
 	}
-	if existing != nil {
-		if strings.TrimSpace(existing.CurrentCommitID) == strings.TrimSpace(commitOID) {
-			return nil
-		}
-		return store.UpdateChangeCommitID(ctx, existing.ID, commitOID, time.Now().UnixMilli())
-	}
-	_, err = s.RecordGitCommit(ctx, repo, commitOID, PendingCommitContext{
+	_, err := s.RecordGitCommit(ctx, repo, commitOID, PendingCommitContext{
 		WorktreeRoot: repo.RootPath,
 		GitCommonDir: repo.GitCommonDir,
 	})
 	return err
 }
 
-// RecoverMissingRevisions scans commit messages and records missing DB rows.
-func (s *Service) RecoverMissingRevisions(ctx context.Context, repo RepoInfo, revisionIDs []string) (int, error) {
-	if len(revisionIDs) == 0 {
+// RecoverMissingCommits records the commits ~/.gx has no revision for: ones
+// made while gx's hooks were not running. It returns how many it recorded.
+func (s *Service) RecoverMissingCommits(ctx context.Context, repo RepoInfo, commitOIDs []string) (int, error) {
+	if len(commitOIDs) == 0 {
 		return 0, nil
 	}
-	recovered := 0
-	var recoveryErrors []error
 	store, err := openStore(ctx)
 	if err != nil {
 		return 0, err
@@ -168,39 +147,25 @@ func (s *Service) RecoverMissingRevisions(ctx context.Context, repo RepoInfo, re
 	if repoRow == nil {
 		return 0, nil
 	}
-	for _, revisionID := range revisionIDs {
-		revisionID = strings.TrimSpace(revisionID)
-		if revisionID == "" {
+	recovered := 0
+	var recoveryErrors []error
+	for _, commitOID := range commitOIDs {
+		commitOID = strings.TrimSpace(commitOID)
+		if commitOID == "" {
 			continue
 		}
-		existing, err := store.FindChangeByJJChangeID(ctx, repoRow.ID, revisionID)
+		existing, err := store.FindChangeByCommitID(ctx, repoRow.ID, commitOID)
 		if err != nil {
 			return recovered, err
 		}
-		commitOID, err := s.findCommitByRevisionID(ctx, repo.RootPath, revisionID)
-		if err != nil {
-			recoveryErrors = append(recoveryErrors, fmt.Errorf("find revision %s: %w", revisionID, err))
-			continue
-		}
-		if commitOID == "" {
-			recoveryErrors = append(recoveryErrors, fmt.Errorf("find revision %s: no matching commit", revisionID))
-			continue
-		}
 		if existing != nil {
-			if strings.TrimSpace(existing.CurrentCommitID) != strings.TrimSpace(commitOID) {
-				if err := store.UpdateChangeCommitID(ctx, existing.ID, commitOID, time.Now().UnixMilli()); err != nil {
-					recoveryErrors = append(recoveryErrors, fmt.Errorf("recover revision %s commit oid: %w", revisionID, err))
-					continue
-				}
-				recovered++
-			}
 			continue
 		}
 		if _, err := s.RecordGitCommit(ctx, repo, commitOID, PendingCommitContext{
 			WorktreeRoot: repo.RootPath,
 			GitCommonDir: repo.GitCommonDir,
 		}); err != nil {
-			recoveryErrors = append(recoveryErrors, fmt.Errorf("recover revision %s: %w", revisionID, err))
+			recoveryErrors = append(recoveryErrors, fmt.Errorf("record commit %s: %w", shortID(commitOID, 7), err))
 			continue
 		}
 		recovered++
@@ -208,15 +173,33 @@ func (s *Service) RecoverMissingRevisions(ctx context.Context, repo RepoInfo, re
 	return recovered, errors.Join(recoveryErrors...)
 }
 
-func (s *Service) findCommitByRevisionID(ctx context.Context, repoRoot, revisionID string) (string, error) {
-	needle := RevisionTrailerLine(revisionID)
-	out, err := s.runTrimmed(ctx, repoRoot, "git", "log", "--all", "--format=%H%x00%B", "--grep", needle, "-n", "1")
+// recordedRevisionForCommit is the revision ~/.gx recorded for a commit, or,
+// for a commit made before gx stopped writing trailers, the one its message
+// names. It returns "" when neither knows the commit.
+func (s *Service) recordedRevisionForCommit(ctx context.Context, repo RepoInfo, commitOID string) string {
+	if store, err := openStore(ctx); err == nil {
+		defer store.Close()
+		if repoRow, err := store.FindRepoByIdentity(ctx, repo.GitCommonDir, repo.RootPath); err == nil && repoRow != nil {
+			if change, err := store.FindChangeByCommitID(ctx, repoRow.ID, commitOID); err == nil && change != nil {
+				return change.JJChangeID
+			}
+		}
+	}
+	message, err := s.runTrimmed(ctx, repo.RootPath, "git", "log", "-1", "--format=%B", commitOID)
 	if err != nil {
-		return "", err
+		return ""
 	}
-	parts := strings.SplitN(out, "\x00", 2)
-	if len(parts) == 0 {
-		return "", nil
+	if ids := ParseRevisionIDsFromMessage(message); len(ids) > 0 {
+		return ids[len(ids)-1]
 	}
-	return strings.TrimSpace(parts[0]), nil
+	return ""
+}
+
+// revisionForCommit is the revision a newly recorded commit belongs to: the
+// one its legacy trailer names, if it has one, otherwise a new one.
+func (s *Service) revisionForCommit(ctx context.Context, repo RepoInfo, commitOID, message string) (string, error) {
+	if ids := ParseRevisionIDsFromMessage(message); len(ids) > 0 {
+		return ids[len(ids)-1], nil
+	}
+	return GenerateRevisionID()
 }

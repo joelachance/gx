@@ -9,10 +9,11 @@ import (
 )
 
 var revisionTrailerLinePattern = regexp.MustCompile(
-	`(?m)^` + regexp.QuoteMeta(strings.TrimSuffix(RevisionTrailerFormat, "%s")) + `(\S+)\s*$`,
+	`(?m)^` + regexp.QuoteMeta(legacyRevisionTrailerPrefix) + `(\S+)\s*$`,
 )
 
-// ParseRevisionIDsFromMessage returns gx revision IDs embedded in a commit message.
+// ParseRevisionIDsFromMessage returns the revision IDs in a commit message's
+// legacy gx trailers. Only commits made before gx stopped writing them have any.
 func ParseRevisionIDsFromMessage(message string) []string {
 	seen := map[string]struct{}{}
 	var out []string
@@ -33,13 +34,8 @@ func ParseRevisionIDsFromMessage(message string) []string {
 	return out
 }
 
-// RevisionTrailerValue formats the trailer value for a revision ID.
-func RevisionTrailerValue(revisionID string) string {
-	return RevisionTrailerLine(revisionID)
-}
-
-// RevisionIDsInGitRange lists unique gx revision IDs from commit messages in a ref range.
-func RevisionIDsInGitRange(ctx context.Context, repoRoot, refRange string) ([]string, error) {
+// CommitsInGitRange lists the commits in a ref range, oldest first.
+func CommitsInGitRange(ctx context.Context, repoRoot, refRange string) ([]string, error) {
 	repoRoot = strings.TrimSpace(repoRoot)
 	refRange = strings.TrimSpace(refRange)
 	if repoRoot == "" {
@@ -48,28 +44,17 @@ func RevisionIDsInGitRange(ctx context.Context, repoRoot, refRange string) ([]st
 	if refRange == "" {
 		return nil, nil
 	}
-	args := []string{"-C", repoRoot, "log", "--format=%B", refRange}
+	args := []string{"-C", repoRoot, "rev-list", "--reverse", refRange}
 	if !strings.Contains(refRange, "..") {
 		// A bare rev means a new-branch push with no remote base; without a
-		// bound the walk collects every gx revision in repo history. Only
-		// commits that are not already on a remote are being pushed.
+		// bound the walk collects the whole history. Only commits that are not
+		// already on a remote are being pushed.
 		args = append(args, "--not", "--remotes")
 	}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("git log %s: %w\n%s", refRange, err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("git rev-list %s: %w\n%s", refRange, err, strings.TrimSpace(string(out)))
 	}
-	seen := map[string]struct{}{}
-	var ids []string
-	for _, message := range strings.Split(string(out), "\n\n") {
-		for _, id := range ParseRevisionIDsFromMessage(message) {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
+	return splitLines(strings.TrimSpace(string(out))), nil
 }

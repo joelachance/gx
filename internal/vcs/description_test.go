@@ -3,7 +3,6 @@ package vcs
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/satoricorp/gx/internal/storage"
@@ -38,60 +37,6 @@ func TestValidateCommitMessage(t *testing.T) {
 
 	if err := ValidateCommitMessage(PlaceholderDescription); err == nil {
 		t.Fatal("ValidateCommitMessage() error = nil, want placeholder rejection")
-	}
-}
-
-func TestStampRevisionTrailer(t *testing.T) {
-	t.Parallel()
-
-	changeID := "rzlmkskwokkzwnqpxttqstlwrpvlmttl"
-	wantTrailer := RevisionTrailerLine(changeID)
-
-	got := StampRevisionTrailer("add login flow", changeID)
-	if !strings.Contains(got, wantTrailer) {
-		t.Fatalf("StampRevisionTrailer() = %q, want trailer %q", got, wantTrailer)
-	}
-	if !strings.HasPrefix(got, "add login flow\n\n") {
-		t.Fatalf("StampRevisionTrailer() = %q, want blank-line separation", got)
-	}
-
-	again := StampRevisionTrailer(got, changeID)
-	if again != got {
-		t.Fatalf("StampRevisionTrailer() duplicated trailer:\nfirst=%q\nsecond=%q", got, again)
-	}
-}
-
-func TestStampRevisionTrailerReplacesStaleTrailer(t *testing.T) {
-	t.Parallel()
-
-	oldID := "oldoldoldoldoldoldoldoldoldoldold"
-	newID := "newnewnewnewnewnewnewnewnewnewnew"
-
-	stamped := StampRevisionTrailer("add login flow", oldID)
-	restamped := StampRevisionTrailer(stamped, newID)
-
-	if strings.Contains(restamped, RevisionTrailerLine(oldID)) {
-		t.Fatalf("StampRevisionTrailer() kept stale trailer: %q", restamped)
-	}
-	if got := strings.Count(restamped, revisionTrailerPrefix()); got != 1 {
-		t.Fatalf("StampRevisionTrailer() = %q, want exactly 1 gx trailer, got %d", restamped, got)
-	}
-	if !strings.HasSuffix(restamped, RevisionTrailerLine(newID)) {
-		t.Fatalf("StampRevisionTrailer() = %q, want trailing %q", restamped, RevisionTrailerLine(newID))
-	}
-
-	multi := stamped + "\n" + RevisionTrailerLine("thirdthirdthirdthirdthirdthirdthi")
-	collapsed := StampRevisionTrailer(multi, newID)
-	if got := strings.Count(collapsed, revisionTrailerPrefix()); got != 1 {
-		t.Fatalf("StampRevisionTrailer() = %q, want stale trailers collapsed to 1, got %d", collapsed, got)
-	}
-}
-
-func TestFinalizeCommitMessageRejectsEmpty(t *testing.T) {
-	t.Parallel()
-
-	if _, err := FinalizeCommitMessage("   ", "chg1"); !errors.Is(err, ErrEmptyCommitMessage) {
-		t.Fatalf("FinalizeCommitMessage() error = %v, want %v", err, ErrEmptyCommitMessage)
 	}
 }
 

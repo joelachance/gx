@@ -85,14 +85,10 @@ func gitCurrentBranch(t *testing.T, root string) string {
 }
 
 // commitViaHooks commits the staged selection with plain git and records it
-// exactly as gx's prepare-commit-msg and post-commit hooks do.
+// exactly as gx's post-commit hook does.
 func commitViaHooks(t *testing.T, svc *Service, root, message string) CommitResult {
 	t.Helper()
-	stamped, err := PrepareCommitMessageHook(message)
-	if err != nil {
-		t.Fatalf("PrepareCommitMessageHook() error = %v", err)
-	}
-	runGit(t, root, "commit", "-m", stamped)
+	runGit(t, root, "commit", "-m", message)
 	ctx := context.Background()
 	repo, err := svc.ResolveGxRepoAtPath(ctx, root)
 	if err != nil {
@@ -128,7 +124,8 @@ func TestRecordedCommitPreservesUnstagedWork(t *testing.T) {
 	}
 }
 
-func TestRecordedCommitStampsGxTrailer(t *testing.T) {
+// gx records a commit without touching its message.
+func TestRecordedCommitLeavesTheMessageAlone(t *testing.T) {
 	svc, root := setupStagedCommitRepo(t, "main")
 	if err := os.WriteFile(filepath.Join(root, "work.txt"), []byte("work\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -136,26 +133,15 @@ func TestRecordedCommitStampsGxTrailer(t *testing.T) {
 	runGit(t, root, "add", "work.txt")
 
 	result := commitViaHooks(t, svc, root, "work change")
-	trailer := RevisionTrailerLine(result.Change.ChangeID)
-	if !strings.Contains(result.Change.Description, "work change") {
-		t.Fatalf("description = %q, want subject work change", result.Change.Description)
+	if result.Change.Description != "work change" || !ValidRevisionID(result.Change.ChangeID) {
+		t.Fatalf("recorded change = %+v, want subject work change and a valid revision id", result.Change)
 	}
-
 	gitMessage, err := gitCommitMessage(t, root, "HEAD")
 	if err != nil {
 		t.Fatalf("gitCommitMessage() error = %v", err)
 	}
-	if !strings.Contains(gitMessage, trailer) {
-		t.Fatalf("git commit message = %q, want trailer %q", gitMessage, trailer)
-	}
-
-	parsed, err := gitInterpretTrailer(t, root, gitMessage, "gx")
-	if err != nil {
-		t.Fatalf("gitInterpretTrailer() error = %v", err)
-	}
-	wantTrailerValue := fmt.Sprintf("https://gx.run/r/%s", result.Change.ChangeID)
-	if parsed != wantTrailerValue {
-		t.Fatalf("parsed gx trailer = %q, want %q", parsed, wantTrailerValue)
+	if strings.TrimSpace(gitMessage) != "work change" {
+		t.Fatalf("git commit message = %q, want it untouched", gitMessage)
 	}
 }
 
@@ -168,23 +154,6 @@ func gitCommitMessage(t *testing.T, root, rev string) (string, error) {
 		return "", fmt.Errorf("git log: %w\n%s", err, out)
 	}
 	return string(out), nil
-}
-
-func gitInterpretTrailer(t *testing.T, root, message, key string) (string, error) {
-	t.Helper()
-	cmd := exec.Command("git", "interpret-trailers", "--parse", "--only-trailers")
-	cmd.Dir = root
-	cmd.Stdin = strings.NewReader(message)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git interpret-trailers: %w\n%s", err, out)
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, key+": ") {
-			return strings.TrimPrefix(line, key+": "), nil
-		}
-	}
-	return "", fmt.Errorf("trailer %q not found in %q", key, string(out))
 }
 
 func TestRecordedCommitOnUnconventionalBranchUsesBranchStack(t *testing.T) {

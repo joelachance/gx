@@ -55,12 +55,13 @@ type globalHookSpec struct {
 func globalHookSpecs() []globalHookSpec {
 	return []globalHookSpec{
 		// gx lifecycle hooks: gx work first (never fatal), then the repo hook.
-		{name: "prepare-commit-msg", gx: "prepare-commit-msg"},
 		{name: "post-commit", gx: "post-commit"},
 		{name: "post-rewrite", gx: "post-rewrite", stdin: true},
 		{name: "pre-push", gx: "pre-push", stdin: true},
 
 		// Pure forwarders: gx does nothing, but the repo's hook must still run.
+		// prepare-commit-msg is one since gx stopped writing commit trailers.
+		{name: "prepare-commit-msg"},
 		{name: "applypatch-msg"},
 		{name: "pre-applypatch"},
 		{name: "post-applypatch"},
@@ -407,21 +408,6 @@ func globalHookScript(spec globalHookSpec, gxPath, hooksDir string) string {
 	preamble := globalHookPreamble(hooksDir)
 	resolver := globalGxResolver(gxPath)
 	switch spec.gx {
-	case "prepare-commit-msg":
-		return preamble + fmt.Sprintf(`
-%s
-gx_repo="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -n "$gx_bin" ] && [ -n "$gx_repo" ]; then
-  "$gx_bin" __hooks prepare-commit-msg --repo "$gx_repo" --message-path "$1" || {
-    echo "gx prepare-commit-msg failed; commit continues without a gx trailer" >&2
-  }
-fi
-gx_resolve_local_hook prepare-commit-msg
-if [ -n "$gx_local_hook" ]; then
-  exec "$gx_local_hook" "$@"
-fi
-exit 0
-`, resolver)
 	case "post-commit":
 		return preamble + fmt.Sprintf(`
 %s
