@@ -248,7 +248,7 @@ func TestReviewDefaultGateIsBlocking(t *testing.T) {
 // blocking lane. A Strong finding one reviewer raised is demoted and passes;
 // the same finding raised by both reviewers and confirmed by the judge fails.
 func TestReviewGateErrorBlockingLevelReadsLanes(t *testing.T) {
-	twoLegs := []string{"Bedrock A", "Bedrock B"}
+	twoLegs := []string{"Reviewer A", "Reviewer B"}
 	base := codereview.Report{
 		ReviewMode: codereview.ReviewModeRange,
 		Reviewed:   true,
@@ -256,7 +256,7 @@ func TestReviewGateErrorBlockingLevelReadsLanes(t *testing.T) {
 
 	demoted := base
 	demoted.Findings = codereview.AssignLanes([]codereview.Finding{
-		{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Bedrock A"}, JudgeVerdict: "confirmed"},
+		{ID: "one-leg", Strength: "Strong", Corroboration: []string{"Reviewer A"}, JudgeVerdict: "confirmed"},
 	})
 	if err := reviewGateError(demoted, codereview.FailOnBlocking, true); err != nil {
 		t.Fatalf("reviewGateError(demoted Strong) = %v, want nil: one grader is advisory", err)
@@ -342,37 +342,6 @@ func TestReviewOnAnEmptyRepoNeverPassesAGate(t *testing.T) {
 			}
 			if code := ExitCode(gateErr); code != reviewNothingToReviewExitCode {
 				t.Fatalf("ExitCode() = %d, want %d (error: %v)", code, reviewNothingToReviewExitCode, gateErr)
-			}
-		})
-	}
-}
-
-// The gx Cloud history row labels the run, and that label must not disagree
-// with the summary text stored beside it. A run whose summary says "Reviewed
-// the repository" must not be filed as a patch review.
-func TestReviewRunModeNamesTheSubjectItReviewed(t *testing.T) {
-	cases := []struct {
-		name          string
-		prompt        string
-		scopeExplicit bool
-		deep          bool
-		wholeRepo     bool
-		want          string
-	}{
-		{name: "default", want: "patch"},
-		{name: "scope", scopeExplicit: true, want: "scope"},
-		{name: "prompt", prompt: "why is auth slow?", want: "prompt"},
-		{name: "deep", deep: true, want: "deep"},
-		{name: "whole repo", wholeRepo: true, want: "repo"},
-		// The subject wins over the depth and the lens: those are recorded as
-		// their own fields, the mode is the one label.
-		{name: "whole repo and deep", wholeRepo: true, deep: true, want: "repo"},
-		{name: "whole repo and prompt", wholeRepo: true, prompt: "is there a race?", want: "repo"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := reviewRunMode(tc.prompt, tc.scopeExplicit, tc.deep, tc.wholeRepo); got != tc.want {
-				t.Fatalf("reviewRunMode() = %q, want %q", got, tc.want)
 			}
 		})
 	}

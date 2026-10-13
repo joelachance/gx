@@ -95,10 +95,9 @@ git push             # publish the current stack's branch
 gh pr create         # then open the PR (when the user wants one)
 ```
 
-Publish with plain `git push`. The gx pre-push hook captures the session and registers
-publish/CI status as the branch goes up. Open the pull request with `gh pr create`; do
-**not** seed a `## Summary` section in the PR body (leave human notes only). gx Cloud
-appends the rich summary below the existing body once the PR exists.
+Publish with plain `git push`. The gx pre-push hook captures the coding session behind
+the change as the branch goes up. Open the pull request with `gh pr create`, with a body
+that says what changed and why.
 
 Do not run `gx push` — the command has been removed. Publish with plain `git push`; the
 pre-push hook is the only publish path.
@@ -134,12 +133,11 @@ agent client.
 - `gx capture push` or any manual capture/attach step — the pre-push hook captures and
   publishes on `git push`, and provenance is inferred automatically.
 - Hidden utilities such as `gx base`, `gx generate`, or `gx sync` — removed; use plain
-  Git (`git pull --rebase`, `git checkout -b`) instead. Queued uploads retry on the next
-  `git push`, and `gx doctor` shows and drains the upload outbox.
+  Git (`git pull --rebase`, `git checkout -b`) instead.
 - `gx demo` and `gx ops` — removed. There is no walkthrough, and `gx ops diagnose doctor`
   was only ever `gx doctor` under another name; run `gx doctor`.
-- `gx report` — folded into `gx doctor --report`, which diagnoses first and then sends
-  that diagnosis with recent logs to support.
+- `gx report`, `gx doctor --report`, `gx auth` and `gx update` — removed with gx Cloud;
+  gx runs locally, and `gx doctor` shows its state.
 - Declaring provenance by hand (self-reports, task summaries) — there is no such channel;
   sessions are matched to changed hunks automatically.
 
@@ -148,10 +146,9 @@ agent client.
 | Symptom | Fix |
 | --- | --- |
 | `git commit` says "nothing to commit" | Nothing staged — run `git add <files>` first |
-| Error mentions `gx auth login` or "not logged in" | Ask the user to run `gx auth login`, then retry |
-| Error mentions session expired / `gx auth logout` | Ask the user to run `gx auth logout` then `gx auth login`, then retry |
+| `gx review cannot run` / "no model API key is set" | Ask the user to set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, then retry |
+| Error mentions `gx auth login` | The installed gx is an older build that expects a gx Cloud; ask the user to reinstall gx from source or a GitHub release |
 | `git push` fails: no `origin` / not a GitHub remote | `git remote -v`; point `origin` at GitHub, or skip publishing |
 | `git push` rejected (remote moved) | `git pull --rebase`, then retry `git push` |
-| No PR summary on the PR | Confirm the branch was pushed with `git push` while hooks are installed; run `gx doctor` |
 | Repo not initialized errors | `gx init -y`, then retry |
-| Something is broken and the user wants support to see it | `gx doctor --report` sends the diagnosis plus recent gx logs |
+| Something is broken | Run `gx doctor` and share its output |

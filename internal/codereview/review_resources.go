@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/cloud"
 	"github.com/satoricorp/gx/internal/semantic"
 )
 
@@ -30,9 +29,6 @@ type ReviewResourceRetriever struct {
 	Store     reviewResourceStore
 	Namespace string
 	Limit     int
-	// CloudSearcher overrides the gx Cloud retrieval client; injected in
-	// tests. When nil it is resolved from the signed-in credentials.
-	CloudSearcher reviewCloudSearcher
 	// Disabled, when set, is the reason this retriever will not query the
 	// corpus. It is carried on the retriever rather than expressed by leaving
 	// the retriever out of the set, so that turning the corpus off still shows
@@ -74,19 +70,21 @@ func reviewResourceRetrieverFromEnv() ContextRetriever {
 	retriever := ReviewResourceRetriever{
 		Limit: reviewEnvInt("GX_REVIEW_RESOURCES_TOP_K", defaultReviewResourceTopK),
 	}
+	// The shared corpus lived in gx Cloud's TurboPuffer account, and its
+	// source documents are not in this repository, so there is no corpus to
+	// query unless someone indexed their own and named it. Querying the
+	// default name on a reviewer's own account would only fail, on every
+	// review, for everyone who set a TurboPuffer key for the code index.
+	namespace := strings.TrimSpace(os.Getenv("GX_REVIEW_KNOWLEDGE_NAMESPACE"))
+	if namespace == "" {
+		return ReviewResourceRetriever{Disabled: "no review-knowledge corpus is configured (set GX_REVIEW_KNOWLEDGE_NAMESPACE to one you have indexed)"}
+	}
 	openAIKey := strings.TrimSpace(firstNonEmpty(os.Getenv("OPENAI_API_KEY"), os.Getenv("GX_OPENAI_API_KEY")))
 	tpufKey := strings.TrimSpace(os.Getenv("TURBOPUFFER_API_KEY"))
 	if openAIKey == "" || tpufKey == "" {
-		// No direct keys. The retriever is still returned: Retrieve goes
-		// through gx Cloud when signed in, and otherwise records the source as
-		// disabled. It used to return nil here, which made the shared
-		// knowledge corpus vanish from the review with no evidence line — the
-		// exact silent-degradation the evidence log exists to prevent.
+		// Still returned, so Retrieve records the source as disabled rather
+		// than letting it vanish from the review with no evidence line.
 		return retriever
-	}
-	namespace := strings.TrimSpace(os.Getenv("GX_REVIEW_KNOWLEDGE_NAMESPACE"))
-	if namespace == "" {
-		namespace = defaultReviewKnowledgeNamespace
 	}
 	cfg := semantic.Config{
 		OpenAIAPIKey:         openAIKey,
@@ -112,70 +110,6 @@ const reviewKnowledgeEvidenceSource = "review knowledge"
 
 // EvidenceSource implements evidenceNamer.
 func (ReviewResourceRetriever) EvidenceSource() string { return reviewKnowledgeEvidenceSource }
-
-// retrieveKnowledgeViaCloud searches the shared review-knowledge corpus
-// through gx Cloud. The server embeds the query at the corpus's own width and
-// applies the review_corpus filter; the language/category signals let it run
-// the same signal-narrowed second query as the direct path. Only those two are
-// sent — framework and risk tags are not filterable in the corpus schema.
-func (r ReviewResourceRetriever) retrieveKnowledgeViaCloud(
-	ctx context.Context,
-	in RetrieveInput,
-	searcher reviewCloudSearcher,
-	queryText string,
-	signals reviewResourceSignalSet,
-) ([]ContextSnippet, error) {
-	limit := r.Limit
-	if in.Options.Deep && limit < defaultReviewResourceDeepTopK {
-		limit = defaultReviewResourceDeepTopK
-	}
-	if limit <= 0 {
-		limit = defaultReviewResourceTopK
-	}
-	result, err := searcher.SearchReviewIndex(ctx, cloud.ReviewSearchRequest{
-		Target:     "knowledge",
-		Query:      queryText,
-		Limit:      limit,
-		Languages:  signals.Languages,
-		Categories: signals.Categories,
-	})
-	if err != nil {
-		in.Evidence.Record(EvidenceStatus{
-			Source: reviewKnowledgeEvidenceSource,
-			State:  EvidenceUnavailable,
-			Detail: cloudUnavailableDetail(err),
-		})
-		return nil, nil
-	}
-	status := EvidenceStatus{Source: reviewKnowledgeEvidenceSource, Namespace: result.Namespace}
-	switch {
-	case !result.Available:
-		status.State = EvidenceUnavailable
-		status.Detail = "gx cloud retrieval is not configured server-side"
-		if result.Reason != "" {
-			status.Detail = "gx cloud: " + result.Reason
-		}
-	case !result.Exists:
-		status.State = EvidenceMissing
-		status.Detail = "the shared review-knowledge corpus does not exist on this cloud"
-	case len(result.Rows) == 0:
-		status.State = EvidenceEmpty
-	}
-	if status.State != "" {
-		in.Evidence.Record(status)
-		return nil, nil
-	}
-	rows := make([]reviewResourceRow, 0, len(result.Rows))
-	for _, row := range cloudSearchRows(result.Rows) {
-		rows = append(rows, reviewResourceRow(row))
-	}
-	snippets := reviewResourceSnippets(rows, limit, result.Namespace)
-	status.State = EvidenceOK
-	status.Snippets = len(snippets)
-	status.Detail = "via gx cloud"
-	in.Evidence.Record(status)
-	return snippets, nil
-}
 
 // Retrieve searches the shared review-knowledge corpus and records what
 // happened to it, in every case.
@@ -215,23 +149,13 @@ func (r ReviewResourceRetriever) Retrieve(ctx context.Context, in RetrieveInput)
 		return nil, nil
 	}
 	if r.Embedder == nil || r.Store == nil {
-		// No direct keys: the signed-in path retrieves the shared corpus
-		// through gx Cloud, and with no login the source reports itself
-		// disabled instead of silently contributing nothing.
-		searcher := r.CloudSearcher
-		if searcher == nil {
-			searcher = reviewCloudSearcherFromEnv()
-		}
-		if searcher == nil {
-			in.Evidence.Record(EvidenceStatus{
-				Source: reviewKnowledgeEvidenceSource,
-				State:  EvidenceDisabled,
-				Detail: "not signed in to gx Cloud, and no direct keys for the shared review corpus",
-				Remedy: signInRemedy,
-			})
-			return nil, nil
-		}
-		return r.retrieveKnowledgeViaCloud(ctx, in, searcher, queryText, signals)
+		in.Evidence.Record(EvidenceStatus{
+			Source: reviewKnowledgeEvidenceSource,
+			State:  EvidenceDisabled,
+			Detail: "no TURBOPUFFER_API_KEY and OPENAI_API_KEY to query the corpus with",
+			Remedy: directKeysRemedy,
+		})
+		return nil, nil
 	}
 	vectors, err := r.Embedder.Embed(ctx, []string{queryText})
 	if err != nil {

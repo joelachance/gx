@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/auth"
 	"github.com/satoricorp/gx/internal/semantic"
 	"github.com/satoricorp/gx/internal/vcs"
 )
@@ -25,19 +24,15 @@ func newIndexCommand(ctx context.Context) *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:    "index",
-		Short:  "Index this repository's source for review retrieval",
-		Hidden: true,
-		Args:   cobra.NoArgs,
+		Use:   "index",
+		Short: "Index this repository's source for review retrieval",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := indexRepoRoot(ctx)
 			if err != nil {
 				return err
 			}
 			orgID := ""
-			if creds, ok := auth.LoadUpload(); ok {
-				orgID = creds.OrgID
-			}
 			logf := func(format string, args ...any) {}
 			if !quiet && !jsonOut {
 				logf = func(format string, args ...any) {

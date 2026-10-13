@@ -12,13 +12,7 @@ import (
 	"time"
 )
 
-// openAIModelPrefix marks a reviewer leg that runs on the OpenAI API instead
-// of Bedrock: GX_REVIEW_BEDROCK_MODEL_B="openai:gpt-5.2". The prefix keeps the
-// two namespaces from colliding — "gpt-5.2" alone would otherwise be sent to
-// bedrock-runtime, which would reject it with an error pointing at the wrong
-// layer.
 const (
-	openAIModelPrefix     = "openai:"
 	openAIChatCompletions = "https://api.openai.com/v1/chat/completions"
 
 	// openAIReasoningHeadroomTokens pads max_completion_tokens above the
@@ -29,15 +23,9 @@ const (
 	// finish_reason "length". The visible-answer budget the caller asked for
 	// is preserved; this only makes room for the thinking on top of it.
 	openAIReasoningHeadroomTokens = 16000
-
-	openAITimeout = 10 * time.Minute
 )
 
-func modelUsesOpenAI(model string) bool {
-	return strings.HasPrefix(strings.TrimSpace(model), openAIModelPrefix)
-}
-
-// openAITransport implements bedrockTransport against the OpenAI chat
+// openAITransport implements modelTransport against the OpenAI chat
 // completions API, so an OpenAI model can sit in a reviewer leg without the
 // panel, prompts, parsing, or failure reporting knowing the difference.
 type openAITransport struct {
@@ -46,15 +34,15 @@ type openAITransport struct {
 	client *http.Client
 }
 
-func newOpenAITransport() (*openAITransport, error) {
+func newOpenAITransport(model string) (*openAITransport, error) {
 	key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	if key == "" {
-		return nil, fmt.Errorf("an openai: reviewer leg needs OPENAI_API_KEY in the environment")
+		return nil, fmt.Errorf("%s runs on the OpenAI API, which needs OPENAI_API_KEY", apiModelName(model))
 	}
 	return &openAITransport{
 		apiKey: key,
 		url:    openAIChatCompletions,
-		client: &http.Client{Timeout: openAITimeout},
+		client: &http.Client{Timeout: modelCallTimeout},
 	}, nil
 }
 
@@ -84,13 +72,13 @@ type openAIChatResponse struct {
 	} `json:"error"`
 }
 
-func (t *openAITransport) complete(ctx context.Context, model, system, input string, maxOutputTokens int) (bedrockCompletion, error) {
+func (t *openAITransport) complete(ctx context.Context, model, system, input string, maxOutputTokens int) (modelCompletion, error) {
 	if t == nil {
-		return bedrockCompletion{}, fmt.Errorf("OpenAI reviewer has no transport")
+		return modelCompletion{}, fmt.Errorf("OpenAI reviewer has no transport")
 	}
-	name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(model), openAIModelPrefix))
+	name := apiModelName(model)
 	if name == "" {
-		return bedrockCompletion{}, fmt.Errorf("OpenAI request has no model after the %q prefix", openAIModelPrefix)
+		return modelCompletion{}, fmt.Errorf("OpenAI request has no model")
 	}
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = defaultReviewMaxOutputTokens
@@ -106,11 +94,10 @@ func (t *openAITransport) complete(ctx context.Context, model, system, input str
 		MaxCompletionTokens: maxOutputTokens + openAIReasoningHeadroomTokens,
 	})
 	if err != nil {
-		return bedrockCompletion{}, fmt.Errorf("marshal OpenAI request: %w", err)
+		return modelCompletion{}, fmt.Errorf("marshal OpenAI request: %w", err)
 	}
-	// Same retry contract as the Bedrock wire: throttles and server errors are
-	// transient and a model call is minutes of work, so waiting seconds to
-	// save one is always the right trade.
+	// Throttles and server errors are transient and a model call is minutes
+	// of work, so waiting seconds to save one is always the right trade.
 	var lastErr error
 	for attempt := 0; ; attempt++ {
 		completion, retryable, attemptErr := t.completeOnce(ctx, name, body)
@@ -118,63 +105,63 @@ func (t *openAITransport) complete(ctx context.Context, model, system, input str
 			return completion, nil
 		}
 		lastErr = attemptErr
-		if !retryable || attempt >= len(bedrockRetryBackoffs) {
-			return bedrockCompletion{}, lastErr
+		if !retryable || attempt >= len(modelRetryBackoffs) {
+			return modelCompletion{}, lastErr
 		}
 		select {
 		case <-ctx.Done():
-			return bedrockCompletion{}, lastErr
-		case <-time.After(bedrockRetryBackoffs[attempt]):
+			return modelCompletion{}, lastErr
+		case <-time.After(modelRetryBackoffs[attempt]):
 		}
 	}
 }
 
-func (t *openAITransport) completeOnce(ctx context.Context, model string, body []byte) (bedrockCompletion, bool, error) {
+func (t *openAITransport) completeOnce(ctx context.Context, model string, body []byte) (modelCompletion, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.url, bytes.NewReader(body))
 	if err != nil {
-		return bedrockCompletion{}, false, fmt.Errorf("create OpenAI request: %w", err)
+		return modelCompletion{}, false, fmt.Errorf("create OpenAI request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+t.apiKey)
 	client := t.client
 	if client == nil {
-		client = &http.Client{Timeout: openAITimeout}
+		client = &http.Client{Timeout: modelCallTimeout}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return bedrockCompletion{}, ctx.Err() == nil, fmt.Errorf("call OpenAI model %s: %w", model, err)
+		return modelCompletion{}, ctx.Err() == nil, fmt.Errorf("call OpenAI model %s: %w", model, err)
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-		return bedrockCompletion{}, retryable, fmt.Errorf("OpenAI model %s returned %s: %s", model, resp.Status, firstLine(raw))
+		return modelCompletion{}, retryable, fmt.Errorf("OpenAI model %s returned %s: %s", model, resp.Status, firstLine(raw))
 	}
 	if readErr != nil {
-		return bedrockCompletion{}, true, fmt.Errorf("read OpenAI response for %s: %w", model, readErr)
+		return modelCompletion{}, true, fmt.Errorf("read OpenAI response for %s: %w", model, readErr)
 	}
 	var decoded openAIChatResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return bedrockCompletion{}, false, fmt.Errorf("decode OpenAI response for %s: %w", model, err)
+		return modelCompletion{}, false, fmt.Errorf("decode OpenAI response for %s: %w", model, err)
 	}
 	if decoded.Error != nil {
-		return bedrockCompletion{}, false, fmt.Errorf("OpenAI model %s error: %s", model, decoded.Error.Message)
+		return modelCompletion{}, false, fmt.Errorf("OpenAI model %s error: %s", model, decoded.Error.Message)
 	}
 	if len(decoded.Choices) == 0 {
-		return bedrockCompletion{}, false, fmt.Errorf("OpenAI model %s returned no choices", model)
+		return modelCompletion{}, false, fmt.Errorf("OpenAI model %s returned no choices", model)
 	}
 	choice := decoded.Choices[0]
 	text := strings.TrimSpace(choice.Message.Content)
 	if text == "" {
-		return bedrockCompletion{}, false, fmt.Errorf("OpenAI model %s returned no content (finish_reason %s)", model, choice.FinishReason)
+		return modelCompletion{}, false, fmt.Errorf("OpenAI model %s returned no content (finish_reason %s)", model, choice.FinishReason)
 	}
 	stop := choice.FinishReason
-	// The parse site speaks Bedrock's dialect for truncation; translate so a
-	// reply cut off at the cap reads the same on every wire.
+	// The parse site speaks the Anthropic dialect for truncation; translate so
+	// a reply cut off at the cap reads the same on every wire.
 	if strings.EqualFold(stop, "length") {
 		stop = "max_tokens"
 	}
-	return bedrockCompletion{Text: text, StopReason: stop}, false, nil
+	return modelCompletion{Text: text, StopReason: stop}, false, nil
 }
 
 // firstLine trims an error body to something an operator can read in a log

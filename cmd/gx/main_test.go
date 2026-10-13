@@ -11,14 +11,6 @@ import (
 	"github.com/satoricorp/gx/internal/gxconfig"
 )
 
-func TestRootExposesAuthCommand(t *testing.T) {
-	root := cli.NewRoot(context.Background())
-	cmd, _, err := root.Find([]string{"auth", "login"})
-	if err != nil || cmd == nil {
-		t.Fatalf("auth login command not found: %v", err)
-	}
-}
-
 func TestRootRemovesShortcutCommands(t *testing.T) {
 	root := cli.NewRoot(context.Background())
 	for _, name := range []string{"tla", "tls", "tlt"} {
@@ -81,6 +73,7 @@ func TestRootRemovesHiddenPRCompatibilityCommand(t *testing.T) {
 func TestRootHelpShowsHumanCommandsAndHidesAgentCommands(t *testing.T) {
 	t.Setenv("GX_HOME", t.TempDir())
 	t.Setenv("NO_COLOR", "1")
+	t.Setenv("GX_CLOUD_URL", "")
 	root := cli.NewRoot(context.Background())
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -95,7 +88,6 @@ func TestRootHelpShowsHumanCommandsAndHidesAgentCommands(t *testing.T) {
 	ordered := []string{
 		"Setup:",
 		"  init",
-		"  auth",
 		"Work:",
 		"  review (gxr)",
 		"Help:",
@@ -132,7 +124,9 @@ func TestRootHelpShowsHumanCommandsAndHidesAgentCommands(t *testing.T) {
 	if strings.Contains(text, "Advanced:") {
 		t.Fatalf("root help should not render an Advanced group after ops' removal:\n%s", text)
 	}
-	for _, hidden := range []string{"  add ", "  edit ", "  ops ", "  demo ", "  report ", "  login ", "  base ", "  pr ", "  switch ", "  stack ", "  demux ", "  generate ", "  sync "} {
+	// A local build has no gx Cloud to sign in to, so neither the command nor
+	// the banner offers one.
+	for _, hidden := range []string{"  auth ", "  add ", "  edit ", "  ops ", "  demo ", "  report ", "  login ", "  base ", "  pr ", "  switch ", "  stack ", "  demux ", "  generate ", "  sync ", "gx auth login"} {
 		if strings.Contains(text, hidden) {
 			t.Fatalf("root help should hide %q in:\n%s", hidden, text)
 		}
@@ -145,17 +139,6 @@ func TestRootRemovesDemoAndOpsCommands(t *testing.T) {
 		if cmd, _, err := root.Find([]string{name}); err == nil && cmd != nil && cmd.Name() == name {
 			t.Fatalf("Find(%s) resolved removed command", name)
 		}
-	}
-}
-
-func TestRootKeepsReportAsHiddenAlias(t *testing.T) {
-	root := cli.NewRoot(context.Background())
-	cmd, _, err := root.Find([]string{"report"})
-	if err != nil || cmd == nil || cmd.Name() != "report" {
-		t.Fatalf("Find(report) = cmd=%v err=%v, want the hidden report alias", cmd, err)
-	}
-	if !cmd.Hidden {
-		t.Fatal("gx report should be hidden after folding into gx doctor --report")
 	}
 }
 

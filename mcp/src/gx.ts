@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { resolveCloudURL } from "./buildconfig";
 
 export type GxRunOptions = {
   cwd?: string;
@@ -59,19 +58,6 @@ export function commandEnvironment() {
   const env = { ...process.env };
   env.GX_REVIEW_AI = "1";
   env.GX_MCP = "1";
-  env.GX_CLIENT = "mcp";
-  // Decide the gx server rather than forwarding whatever was inherited. See
-  // resolveCloudURL for why an MCP server's environment is not an operator
-  // choice. Deleting the key rather than setting it empty matters: gx reads it
-  // with os.LookupEnv, so a present-but-empty GX_CLOUD_URL reads as "cloud
-  // explicitly disabled" and would kill the reviewers just as dead as a wrong
-  // URL. Absent is what lets the CLI fall through to its own baked endpoint.
-  const cloudURL = resolveCloudURL();
-  if (cloudURL) {
-    env.GX_CLOUD_URL = cloudURL;
-  } else {
-    delete env.GX_CLOUD_URL;
-  }
   const pathEntries = [
     join(homedir(), ".local", "bin"),
     env.PATH || "",
@@ -174,10 +160,10 @@ export function formatResult(result: GxRunResult, options: FormatOptions = {}): 
 export function formatError(error: unknown, options: FormatOptions = {}): string {
   const maybeResult = (error as { result?: GxRunResult }).result;
   if (maybeResult) {
-    return formatResult(maybeResult, withAuthGuidance(`${maybeResult.stderr}\n${maybeResult.stdout}`, options));
+    return formatResult(maybeResult, withKeyGuidance(`${maybeResult.stderr}\n${maybeResult.stdout}`, options));
   }
   const message = error instanceof Error ? error.message : String(error);
-  const guided = withAuthGuidance(message, options);
+  const guided = withKeyGuidance(message, options);
   return JSON.stringify(
     {
       ok: false,
@@ -196,8 +182,8 @@ export function formatError(error: unknown, options: FormatOptions = {}): string
   );
 }
 
-function withAuthGuidance(message: string, options: FormatOptions): FormatOptions {
-  const guidance = authGuidance(message);
+function withKeyGuidance(message: string, options: FormatOptions): FormatOptions {
+  const guidance = keyGuidance(message);
   if (!guidance) {
     return options;
   }
@@ -207,31 +193,24 @@ function withAuthGuidance(message: string, options: FormatOptions): FormatOption
     nextActions: prependNextAction(options.nextActions, guidance.nextAction),
     extra: {
       ...(options.extra ?? {}),
-      auth_required: true,
+      key_required: true,
     },
   };
 }
 
-function authGuidance(message: string): { display: string; nextAction: string } | undefined {
+// keyGuidance turns gx's "no model key" refusal into the fix that works for an
+// MCP server. The server is spawned by its host application and inherits that
+// application's environment, not the user's shell, so a key exported in a
+// terminal is invisible here; it has to be set in the server's own config.
+function keyGuidance(message: string): { display: string; nextAction: string } | undefined {
   const text = message.toLowerCase();
-  if (!text.trim()) {
+  if (!text.includes("anthropic_api_key") && !text.includes("openai_api_key")) {
     return undefined;
   }
-  const mentionsLogin = text.includes("gx auth login");
-  const missingToken = text.includes("github token is not configured") || text.includes("not logged in");
-  if (!mentionsLogin && !missingToken) {
-    return undefined;
-  }
-  if (text.includes("gx auth logout") || text.includes("session expired")) {
-    const nextAction = "Run `gx auth logout` then `gx auth login` in a terminal, then retry the MCP tool.";
-    return {
-      display: `gx cloud authentication needs to be refreshed. ${nextAction}`,
-      nextAction,
-    };
-  }
-  const nextAction = "Run `gx auth login` in a terminal, then retry the MCP tool.";
+  const nextAction =
+    "Set ANTHROPIC_API_KEY or OPENAI_API_KEY in the env block of the gx MCP server's config (it does not inherit your shell's environment), then retry the MCP tool.";
   return {
-    display: `gx cloud authentication is required. ${nextAction}`,
+    display: `gx review needs a model API key. ${nextAction}`,
     nextAction,
   };
 }

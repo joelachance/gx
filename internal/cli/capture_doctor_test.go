@@ -21,10 +21,6 @@ func TestPrintCaptureDoctorHumanOutputUsesCompactRows(t *testing.T) {
 		HookInstalled:   true,
 		RepoHooksOK:     true,
 		RepoHooksTotal:  1,
-		UploadAuthed:    true,
-		UploadAPI:       "https://api.gx.run",
-		PendingExtracts: 300,
-		PendingSessions: 176,
 		CursorReachable: true,
 		DiskFreeGB:      153,
 	}
@@ -35,10 +31,6 @@ func TestPrintCaptureDoctorHumanOutputUsesCompactRows(t *testing.T) {
 	for _, want := range []string{
 		"Hooks installed",
 		"ok",
-		"Upload",
-		"ok: https://api.gx.run",
-		"Staging backlog",
-		"476 pending",
 		"Disk used",
 		"0GB",
 	} {
@@ -50,7 +42,8 @@ func TestPrintCaptureDoctorHumanOutputUsesCompactRows(t *testing.T) {
 		"Capture",
 		"Pre-push hook",
 		"Registered repo hooks",
-		"Upload credentials",
+		"Upload",
+		"Staging backlog",
 		"Cursor",
 		"Cursor vscdb",
 		"Disk free",
@@ -265,60 +258,6 @@ func TestCaptureRegisteredRepoHooksFallsBackToReachableKnownRepos(t *testing.T) 
 	}
 	if installed != 1 || missing != 1 || unreachable != 0 {
 		t.Fatalf("registered hooks installed=%d missing=%d unreachable=%d, want 1, 1, 0: %#v", installed, missing, unreachable, got)
-	}
-}
-
-func TestCaptureDoctorIssuesExplainAuthOnly(t *testing.T) {
-	status := captureDoctorJSON{
-		HookApplicable:  true,
-		HookInstalled:   true,
-		RepoHooksOK:     true,
-		UploadAuthed:    false,
-		PendingExtracts: 14,
-		PendingSessions: 12,
-		CursorReachable: true,
-		DiskFreeGB:      100,
-	}
-
-	issues := captureDoctorIssues(status)
-	codes := make([]string, 0, len(issues))
-	for _, issue := range issues {
-		codes = append(codes, issue.Code)
-		if strings.TrimSpace(issue.Action) == "" {
-			t.Fatalf("issue %s missing action: %#v", issue.Code, issue)
-		}
-	}
-	wantCodes := []string{"upload_auth_missing"}
-	if !equalDoctorStrings(codes, wantCodes) {
-		t.Fatalf("captureDoctorIssues() codes = %#v, want %#v", codes, wantCodes)
-	}
-
-	summary := diagnoseSummary(doctorJSON{
-		Capture: captureDoctorJSON{Issues: issues},
-		Cursor:  cursorStatusJSON{Found: true},
-	}).Summary
-	if !strings.Contains(summary, "upload auth missing") || strings.Contains(summary, "pending") {
-		t.Fatalf("diagnoseSummary() = %q, want auth detail only", summary)
-	}
-}
-
-func TestCaptureDoctorBacklogDoesNotAffectHealth(t *testing.T) {
-	status := captureDoctorJSON{
-		HookApplicable:  true,
-		HookInstalled:   true,
-		RepoHooksOK:     true,
-		UploadAuthed:    true,
-		PendingExtracts: 29,
-		PendingSessions: 75,
-		CursorReachable: true,
-		DiskFreeGB:      100,
-	}
-
-	if !captureDoctorOK(status) {
-		t.Fatal("captureDoctorOK() = false, want true for staged backlog")
-	}
-	if issues := captureDoctorIssues(status); len(issues) != 0 {
-		t.Fatalf("captureDoctorIssues() = %#v, want no issues for staged backlog", issues)
 	}
 }
 

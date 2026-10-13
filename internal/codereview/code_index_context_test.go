@@ -201,16 +201,11 @@ func TestCodeIndexRetrieverReportsMissingNamespace(t *testing.T) {
 	if len(warnings) != 1 {
 		t.Fatalf("warnings = %v, want one warning for the code index as a whole", warnings)
 	}
-	// The warning has to say how to fix it, and the fix is the website. It used
-	// to name `gx index`, which is a hidden maintenance command that fills one
-	// developer's namespace from one developer's checkout — a worse, manual
-	// copy of the index gx Cloud maintains from the GitHub App on merge.
+	// The warning has to say how to fix it, and `gx index` is the only way to
+	// build an index.
 	joined := strings.Join(warnings, " ")
-	if !strings.Contains(joined, "https://gx.run/repositories") {
-		t.Fatalf("warnings = %v, want the missing index to say where to get it built", warnings)
-	}
-	if strings.Contains(joined, "gx index") {
-		t.Fatalf("warnings = %v, want users sent to the console rather than the hidden `gx index`", warnings)
+	if !strings.Contains(joined, "gx index") {
+		t.Fatalf("warnings = %v, want the missing index to say how to build it", warnings)
 	}
 	if len(in.Evidence.Statuses()) != 2 {
 		t.Fatalf("statuses = %#v, want one per namespace so the verbose listing still names each", in.Evidence.Statuses())

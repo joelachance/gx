@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/satoricorp/gx/internal/cloud"
 )
 
 type Engine struct {
@@ -215,19 +213,13 @@ func (e *Engine) review(ctx context.Context, repoRoot string, opts Options) (Rep
 	if wantAIReview {
 		if !reviewerAvailable(reviewer) {
 			if aiConfigured {
-				// Bedrock is the only review provider, so an unavailable
-				// reviewer means nothing reviewed this change. "AI reviewer not
+				// An unavailable reviewer means nothing reviewed this change. "AI reviewer not
 				// configured" named neither the provider nor the fix, and a
 				// report with only deterministic findings reads like a clean
 				// review; say which credential is missing instead.
 				degradedReasons = append(degradedReasons, ReviewerUnavailableReason(reviewer))
 			}
 		} else {
-			// Every cloud call in this review counts as one metered run; stop
-			// here, with the checkout URL, when the account has none left.
-			if err := reserveCloudRun(ctx, opts); err != nil {
-				return Report{}, err
-			}
 			// The subject is split into as many calls as it takes to read all
 			// of it, rather than trimmed to fit one. Ordinary changes plan a
 			// single shard and behave exactly as before.
@@ -446,12 +438,8 @@ func Review(ctx context.Context, repoRoot string, opts Options) (Report, error) 
 	return NewEngine().Review(ctx, repoRoot, opts)
 }
 
-// Review runs one review. Every gx Cloud call it makes carries one run key, so
-// the server meters the whole review as a single run.
+// Review runs one review.
 func (e *Engine) Review(ctx context.Context, repoRoot string, opts Options) (Report, error) {
-	if cloud.RunKeyFrom(ctx) == "" {
-		ctx = cloud.WithRunKey(ctx, cloud.NewRunKey())
-	}
 	return e.review(ctx, repoRoot, opts)
 }
 

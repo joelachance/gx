@@ -27,7 +27,7 @@ func fixPromptReport() Report {
 				Example:        "-  post(chargeURL, body)\n+  post(chargeURL, body, idempotencyKey(order.ID))",
 				DiffHunk:       "+\tresp, err := post(chargeURL, body)",
 				File:           "internal/checkout/charge.go", Line: 88,
-				Corroboration: []string{"bedrock-a", "bedrock-b"},
+				Corroboration: []string{"reviewer-a", "reviewer-b"},
 			},
 			// No recommendation: not actionable, so never the top fix.
 			{ID: "ai.review.3", Title: "Consider a comment", Lane: LaneAdvisory},

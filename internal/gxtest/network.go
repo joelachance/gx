@@ -91,6 +91,11 @@ func DenyNetwork() func() []string {
 	if dir, err := os.MkdirTemp("", "gx-test-home-"); err == nil {
 		_ = os.Setenv("GX_HOME", dir)
 	}
+	// The GitHub CLI's login is the fallback for GH_TOKEN, and `gh auth token`
+	// would hand a test the developer's live token. gh keeps it in the system
+	// keychain, so an empty config dir does not hide it; a default host nobody
+	// is signed in to does.
+	_ = os.Setenv("GH_HOST", "gx-test.invalid")
 	for _, key := range []string{
 		"HTTP_PROXY", "http_proxy",
 		"HTTPS_PROXY", "https_proxy",
@@ -100,6 +105,9 @@ func DenyNetwork() func() []string {
 		// GitHub is reached through two independent overrides, and setting only
 		// the API one leaves token validation pointed at api.github.com.
 		"GX_GITHUB_API_URL", "GX_GITHUB_USER_URL",
+		// The Anthropic SDK honours this, so a review that reaches the
+		// Anthropic wire here fails against the tripwire too.
+		"ANTHROPIC_BASE_URL",
 	} {
 		_ = os.Setenv(key, tripwire.URL)
 	}
@@ -130,6 +138,8 @@ var NetworkCredentialEnv = []string{
 	"GX_OPENAI_API_KEY",
 	"TURBOPUFFER_API_KEY",
 	"ANTHROPIC_API_KEY",
+	// The reviewer's Anthropic wire also accepts an OAuth access token.
+	"ANTHROPIC_AUTH_TOKEN",
 	"GX_TPUF_NAMESPACE",
 	"GX_API_KEY",
 	"GX_UPLOAD_TOKEN",

@@ -102,18 +102,12 @@ type CaptureStager interface {
 	PendingSessions(ctx context.Context) ([]StagedSession, error)
 	ShareableExtracts(ctx context.Context) ([]StagedExtract, error)
 	ShareableSessions(ctx context.Context) ([]StagedSession, error)
-	MarkExtractShareable(ctx context.Context, revisionIDs []string, att CaptureAttestation) (int, error)
-	MarkSessionShareable(ctx context.Context, revisionIDs []string, att CaptureAttestation) (int, error)
 	MarkExtractsShareableByID(ctx context.Context, ids []string, att CaptureAttestation) (int, error)
 	MarkSessionsShareableByID(ctx context.Context, ids []string, att CaptureAttestation) (int, error)
-	MarkSessionsShareableForSourcesOf(ctx context.Context, ids []string, att CaptureAttestation) (int, error)
 	SessionOriginsByID(ctx context.Context, ids []string) (map[string]string, error)
-	MarkExtractUploaded(ctx context.Context, id string) error
-	MarkSessionUploaded(ctx context.Context, id string) error
 	RawSessions(ctx context.Context) ([]StagedSession, error)
 	SetExtractUploadError(ctx context.Context, id, message string) error
 	SetSessionUploadError(ctx context.Context, id, message string) error
-	SetSessionSourceFingerprint(ctx context.Context, id, contentHash string, sourceBytes, sourceMTime int64) error
 }
 
 // CaptureStage persists capture rows in ~/.gx/gx.db.
@@ -411,14 +405,6 @@ func CaptureUploadFailureCounts(ctx context.Context) (CaptureUploadFailures, err
 	return stager.UploadFailures(ctx)
 }
 
-func (s *CaptureStage) MarkExtractShareable(ctx context.Context, revisionIDs []string, att CaptureAttestation) (int, error) {
-	return s.markShareable(ctx, "capture_extracts", "revision_id", revisionIDs, att)
-}
-
-func (s *CaptureStage) MarkSessionShareable(ctx context.Context, revisionIDs []string, att CaptureAttestation) (int, error) {
-	return s.markShareable(ctx, "capture_sessions", "revision_id", revisionIDs, att)
-}
-
 // MarkExtractsShareableByID marks the exact rows a capture run staged.
 //
 // Revision matching reaches a row only when that row carried a revision id from
@@ -433,59 +419,6 @@ func (s *CaptureStage) MarkExtractsShareableByID(ctx context.Context, ids []stri
 // MarkSessionsShareableByID marks the exact session rows a capture run staged.
 func (s *CaptureStage) MarkSessionsShareableByID(ctx context.Context, ids []string, att CaptureAttestation) (int, error) {
 	return s.markShareable(ctx, "capture_sessions", "id", ids, att)
-}
-
-// MarkSessionsShareableForSourcesOf marks the older rows that describe the same
-// transcripts as ids.
-//
-// The row key changed from "<revisionID>-<contentHash>" to a source-derived
-// "src-<hash>", so re-staging a transcript now writes a brand-new row and
-// leaves its predecessor behind: same tool, same session, same file on disk,
-// unreachable by id and — because its revision is already in pushed history —
-// unreachable by revision too. Those predecessors would sit unshareable
-// forever. They are the same evidence the caller is attesting to right now, not
-// new evidence, so they inherit the same attestation. A source path is required
-// to match, so rows without one (Cursor's vscdb) can never be swept in by an
-// empty-string coincidence.
-func (s *CaptureStage) MarkSessionsShareableForSourcesOf(ctx context.Context, ids []string, att CaptureAttestation) (int, error) {
-	ids = uniqueNonEmpty(ids)
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	now := time.Now().UnixMilli()
-	placeholders := strings.Repeat("?,", len(ids))
-	placeholders = strings.TrimSuffix(placeholders, ",")
-	args := make([]any, 0, len(ids)+4)
-	args = append(args, now, att.Name, att.Email, now)
-	for _, id := range ids {
-		args = append(args, id)
-	}
-	query := fmt.Sprintf(`
-		UPDATE capture_sessions
-		SET shareable_at = COALESCE(shareable_at, ?),
-			acceptor_name = COALESCE(acceptor_name, ?),
-			acceptor_email = COALESCE(acceptor_email, ?),
-			attested_at = COALESCE(attested_at, ?)
-		WHERE uploaded_at IS NULL
-			AND shareable_at IS NULL
-			AND COALESCE(source_path, '') <> ''
-			AND EXISTS (
-				SELECT 1 FROM capture_sessions staged
-				WHERE staged.id IN (%s)
-					AND staged.tool = capture_sessions.tool
-					AND staged.session_id = capture_sessions.session_id
-					AND COALESCE(staged.source_path, '') = COALESCE(capture_sessions.source_path, '')
-			)
-	`, placeholders)
-	res, err := s.db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-	return int(n), nil
 }
 
 // StaleStagedRows counts rows that were staged before cutoff and never became
@@ -543,24 +476,6 @@ func (s *CaptureStage) markShareable(ctx context.Context, table, column string, 
 	return int(n), nil
 }
 
-func (s *CaptureStage) MarkExtractUploaded(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE capture_extracts
-		SET uploaded_at = ?, upload_error = NULL, upload_attempts = 0
-		WHERE id = ?
-	`, time.Now().UnixMilli(), id)
-	return err
-}
-
-func (s *CaptureStage) MarkSessionUploaded(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE capture_sessions
-		SET uploaded_at = ?, upload_error = NULL, upload_attempts = 0
-		WHERE id = ?
-	`, time.Now().UnixMilli(), id)
-	return err
-}
-
 // SetExtractUploadError records a failed attempt and counts it, so a row that
 // can never succeed eventually stops being retried instead of failing silently
 // on every push for the rest of time.
@@ -580,18 +495,6 @@ func (s *CaptureStage) SetSessionUploadError(ctx context.Context, id, message st
 		SET upload_error = ?, upload_attempts = COALESCE(upload_attempts, 0) + 1
 		WHERE id = ?
 	`, message, id)
-	return err
-}
-
-// SetSessionSourceFingerprint records the fingerprint of the source bytes that
-// were actually read at upload time, which may be newer than what staging saw:
-// transcripts grow while their session is still running.
-func (s *CaptureStage) SetSessionSourceFingerprint(ctx context.Context, id, contentHash string, sourceBytes, sourceMTime int64) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE capture_sessions
-		SET content_hash = ?, source_bytes = ?, source_mtime = ?
-		WHERE id = ?
-	`, nullString(contentHash), nullInt64(sourceBytes), nullInt64(sourceMTime), id)
 	return err
 }
 

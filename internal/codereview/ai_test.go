@@ -3,8 +3,6 @@ package codereview
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"testing"
 )
@@ -205,16 +203,10 @@ func TestPatchFocusedReviewIgnoresNotableChanges(t *testing.T) {
 	}
 }
 
-func TestBedrockAnthropicReviewerReviewForSummaryParsesNotableChanges(t *testing.T) {
-	reviewer := &bedrockAnthropicReviewer{
-		model: "anthropic.test-model",
-		transport: &directBedrockTransport{
-			region: "us-east-1", accessKey: "key", secretKey: "secret",
-			client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				body := strings.NewReader(`{"content":[{"type":"text","text":"{\"overview\":\"Overview text\",\"notable_changes\":[{\"file\":\"main.go\",\"line\":3,\"note\":\"Changed entry point.\"}],\"recommendations\":[]}"}]}`)
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(body), Header: make(http.Header)}, nil
-			})},
-		},
+func TestModelReviewerReviewForSummaryParsesNotableChanges(t *testing.T) {
+	reviewer := &modelReviewer{
+		model:     "claude-test",
+		transport: &scriptedTransport{replies: []string{`{"overview":"Overview text","notable_changes":[{"file":"main.go","line":3,"note":"Changed entry point."}],"recommendations":[]}`}},
 	}
 	summary, err := reviewer.ReviewForSummary(context.Background(), ReviewBrief{})
 	if err != nil {
@@ -225,16 +217,10 @@ func TestBedrockAnthropicReviewerReviewForSummaryParsesNotableChanges(t *testing
 	}
 }
 
-func TestBedrockAnthropicReviewerParsesCannedResponse(t *testing.T) {
-	reviewer := &bedrockAnthropicReviewer{
-		model: "anthropic.test-model",
-		transport: &directBedrockTransport{
-			region: "us-east-1", accessKey: "key", secretKey: "secret",
-			client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				body := strings.NewReader(`{"content":[{"type":"text","text":"{\"overview\":\"Overview text\",\"recommendations\":[]}"}]}`)
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(body), Header: make(http.Header)}, nil
-			})},
-		},
+func TestModelReviewerParsesCannedResponse(t *testing.T) {
+	reviewer := &modelReviewer{
+		model:     "claude-test",
+		transport: &scriptedTransport{replies: []string{`{"overview":"Overview text","recommendations":[]}`}},
 	}
 	summary, err := reviewer.ReviewForSummary(context.Background(), ReviewBrief{})
 	if err != nil {
@@ -245,19 +231,13 @@ func TestBedrockAnthropicReviewerParsesCannedResponse(t *testing.T) {
 	}
 }
 
-// TestBedrockAnthropicReviewerResolvesFileLineAndSources ports the anchoring
+// TestModelReviewerResolvesFileLineAndSources ports the anchoring
 // coverage that used to sit on the deleted OpenAI reviewer: a leg must still
 // resolve file, line, and source labels from a canned model response.
-func TestBedrockAnthropicReviewerResolvesFileLineAndSources(t *testing.T) {
-	reviewer := &bedrockAnthropicReviewer{
-		model: "us.anthropic.claude-test",
-		transport: &directBedrockTransport{
-			region: "us-west-2", accessKey: "key", secretKey: "secret",
-			client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				body := strings.NewReader(`{"content":[{"type":"text","text":"{\"recommendations\":[{\"title\":\"T\",\"summary\":\"S\",\"benefit\":\"B\",\"recommendation\":\"R\",\"file\":\"main.go\",\"line\":3,\"source_labels\":[\"L1\"]}]}"}]}`)
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(body), Header: make(http.Header)}, nil
-			})},
-		},
+func TestModelReviewerResolvesFileLineAndSources(t *testing.T) {
+	reviewer := &modelReviewer{
+		model:     "claude-test",
+		transport: &scriptedTransport{replies: []string{`{"recommendations":[{"title":"T","summary":"S","benefit":"B","recommendation":"R","file":"main.go","line":3,"source_labels":["L1"]}]}`}},
 	}
 	brief := ReviewBrief{
 		SourceRefs: []SourceRef{{ID: "L1", Kind: "local", File: "main.go", StartLine: 3, Publisher: "local"}},
@@ -274,15 +254,9 @@ func TestBedrockAnthropicReviewerResolvesFileLineAndSources(t *testing.T) {
 	}
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
 func TestMultiAIReviewerEmptyParseableResponseSucceeds(t *testing.T) {
 	reviewer := multiAIReviewer{reviewers: []namedAIReviewer{{
-		name: "bedrock-a", label: "Bedrock A", reviewer: cannedAIReviewer{payload: `{"recommendations":[]}`},
+		name: "reviewer-a", label: "Reviewer A", reviewer: cannedAIReviewer{payload: `{"recommendations":[]}`},
 	}}}
 	findings, err := reviewer.Review(context.Background(), ReviewBrief{})
 	if err != nil {
@@ -295,8 +269,8 @@ func TestMultiAIReviewerEmptyParseableResponseSucceeds(t *testing.T) {
 
 func TestMultiAIReviewerErrorsWhenAllProvidersFail(t *testing.T) {
 	reviewer := multiAIReviewer{reviewers: []namedAIReviewer{
-		{name: "bedrock-a", label: "Bedrock A", reviewer: failingAIReviewer{err: errTestParseFail}},
-		{name: "bedrock-b", label: "Bedrock B", reviewer: failingAIReviewer{err: errTestParseFail}},
+		{name: "reviewer-a", label: "Reviewer A", reviewer: failingAIReviewer{err: errTestParseFail}},
+		{name: "reviewer-b", label: "Reviewer B", reviewer: failingAIReviewer{err: errTestParseFail}},
 	}}
 	if _, err := reviewer.Review(context.Background(), ReviewBrief{}); err == nil {
 		t.Fatal("Review() succeeded, want error")
@@ -307,8 +281,8 @@ func TestMultiAIReviewerErrorsWhenAllProvidersFail(t *testing.T) {
 // exists for: one model failing must not lose the other model's findings.
 func TestMultiAIReviewerSurvivesOneFailedLeg(t *testing.T) {
 	reviewer := multiAIReviewer{reviewers: []namedAIReviewer{
-		{name: "bedrock-a", label: "Bedrock A", reviewer: failingAIReviewer{err: errTestParseFail}},
-		{name: "bedrock-b", label: "Bedrock B", reviewer: cannedAIReviewer{payload: `{"recommendations":[{"title":"T","summary":"S","benefit":"B","recommendation":"R"}]}`}},
+		{name: "reviewer-a", label: "Reviewer A", reviewer: failingAIReviewer{err: errTestParseFail}},
+		{name: "reviewer-b", label: "Reviewer B", reviewer: cannedAIReviewer{payload: `{"recommendations":[{"title":"T","summary":"S","benefit":"B","recommendation":"R"}]}`}},
 	}}
 	findings, err := reviewer.Review(context.Background(), ReviewBrief{})
 	if err != nil {
@@ -317,7 +291,7 @@ func TestMultiAIReviewerSurvivesOneFailedLeg(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want the surviving leg's finding", findings)
 	}
-	if !strings.Contains(evidenceText(findings[0].Evidence), "Bedrock B") {
+	if !strings.Contains(evidenceText(findings[0].Evidence), "Reviewer B") {
 		t.Fatalf("Evidence = %#v, want the finding attributed to its leg", findings[0].Evidence)
 	}
 }

@@ -6,17 +6,16 @@ import (
 	"testing"
 )
 
-func TestIndexCommandIsRegisteredAsHidden(t *testing.T) {
+// gx index is how a repository gets indexed for review retrieval, so it is a
+// listed command rather than a hidden maintenance one.
+func TestIndexCommandIsRegisteredAndListed(t *testing.T) {
 	root := NewRoot(context.Background())
 	cmd, _, err := root.Find([]string{"index"})
 	if err != nil || cmd == nil || cmd.Name() != "index" {
 		t.Fatalf("Find(index) = cmd=%v err=%v, want the index command", cmd, err)
 	}
-	if !cmd.Hidden {
-		t.Fatal("gx index is a maintenance command and must stay hidden")
-	}
-	if cmd.GroupID != "" {
-		t.Fatalf("gx index GroupID = %q, want no group", cmd.GroupID)
+	if cmd.Hidden {
+		t.Fatal("gx index is hidden; it is the only way to build the code index")
 	}
 	for _, flag := range []string{"full", "json", "quiet", "concurrency", "namespace"} {
 		if cmd.Flags().Lookup(flag) == nil {

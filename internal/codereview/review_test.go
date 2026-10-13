@@ -502,28 +502,31 @@ func TestEnginePassesReviewPromptToAIReviewer(t *testing.T) {
 	}
 }
 
-// TestOpenAICredentialsAloneProduceNoReviewer replaces the deleted
-// TestOpenAIReviewerFromEnvPrefersUserOpenAIKey. OPENAI_API_KEY is still set on
-// every machine that indexes code (internal/semantic embeds with it), so the
-// regression to guard is the opposite of the old one: an OpenAI key must not
-// conjure a reviewer now that Bedrock is the only provider.
-func TestOpenAICredentialsAloneProduceNoReviewer(t *testing.T) {
+// TestAnOpenAIKeyAloneReviewsWithOpenAI: either provider's key on its own is
+// enough to review, and the panel follows it. A machine that also has
+// ANTHROPIC_API_KEY set reviews with Claude; see TestThePanelFollowsTheKeyThatIsSet.
+func TestAnOpenAIKeyAloneReviewsWithOpenAI(t *testing.T) {
 	t.Setenv("GX_REVIEW_AI", "1")
-	t.Setenv("GX_CLOUD_URL", "off")
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv("GX_REVIEW_MODEL_A", "")
+	t.Setenv("GX_REVIEW_MODEL_B", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("OPENAI_API_KEY", "openai-key")
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 
 	reviewer := reviewerFromEnv()
-	if reviewerAvailable(reviewer) {
-		t.Fatalf("reviewerAvailable(%T) = true, want false with only an OpenAI key", reviewer)
+	if !reviewerAvailable(reviewer) {
+		t.Fatalf("reviewerAvailable(%T) = false with OPENAI_API_KEY set: %s", reviewer, ReviewerUnavailableReason(reviewer))
 	}
-	reason := ReviewerUnavailableReason(reviewer)
-	// An OpenAI key is not a reviewer, and the fix to offer is the Cloud one:
-	// telling an ordinary user to supply AWS credentials was the old
-	// precedence, where ambient AWS_* silently chose the wire.
-	if !strings.Contains(reason, "Cloud") {
-		t.Fatalf("ReviewerUnavailableReason() = %q, want the Cloud fix named", reason)
+	multi, ok := reviewer.(multiAIReviewer)
+	if !ok || len(multi.reviewers) != 2 {
+		t.Fatalf("reviewer = %#v, want a two-leg panel", reviewer)
+	}
+	for _, leg := range multi.reviewers {
+		model, ok := leg.reviewer.(*modelReviewer)
+		if !ok || !modelUsesOpenAI(model.model) {
+			t.Fatalf("leg %q = %#v, want an OpenAI model", leg.label, leg.reviewer)
+		}
 	}
 }
 

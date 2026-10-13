@@ -13,11 +13,11 @@ import (
 // whole judge path — request, parse, verdict — over bytes a real model actually
 // produced.
 type stubBedrockTransport struct {
-	completion bedrockCompletion
+	completion modelCompletion
 	err        error
 }
 
-func (t stubBedrockTransport) complete(context.Context, string, string, string, int) (bedrockCompletion, error) {
+func (t stubBedrockTransport) complete(context.Context, string, string, string, int) (modelCompletion, error) {
 	return t.completion, t.err
 }
 
@@ -32,8 +32,8 @@ func judgeFixture(t *testing.T, name string) string {
 	return string(data)
 }
 
-func stubJudge(completion bedrockCompletion) bedrockReviewJudge {
-	return bedrockReviewJudge{client: newBedrockReviewer(stubBedrockTransport{completion: completion}, "stub-model")}
+func stubJudge(completion modelCompletion) modelReviewJudge {
+	return modelReviewJudge{client: newModelReviewer(stubBedrockTransport{completion: completion}, "stub-model")}
 }
 
 // prosePreambleCandidateIDs is the candidate set the captured reply was actually
@@ -194,7 +194,7 @@ func TestParseJudgeResponseRejectsRealTruncatedReply(t *testing.T) {
 // cannot format JSON; it is really a budget that needs raising, and the two
 // have different fixes.
 func TestJudgeReportsTruncationAsTheCause(t *testing.T) {
-	judge := stubJudge(bedrockCompletion{
+	judge := stubJudge(modelCompletion{
 		Text:       judgeFixture(t, "judge-truncated-response.txt"),
 		StopReason: "max_tokens",
 	})
@@ -215,7 +215,7 @@ func TestJudgeReportsTruncationAsTheCause(t *testing.T) {
 // the judge itself rather than the parser alone, so the fix is pinned at the
 // boundary the engine actually calls.
 func TestJudgeReadsRealProsePreambleReplyEndToEnd(t *testing.T) {
-	judge := stubJudge(bedrockCompletion{
+	judge := stubJudge(modelCompletion{
 		Text:       judgeFixture(t, "judge-prose-preamble-response.txt"),
 		StopReason: "end_turn",
 	})
@@ -234,7 +234,7 @@ func TestJudgeReadsRealProsePreambleReplyEndToEnd(t *testing.T) {
 // be able to delete a finding — "the judge could not be reached" and "the judge
 // rejected this" are different facts and must not produce the same review.
 func TestUnparseableJudgeBatchKeepsItsFindings(t *testing.T) {
-	judge := stubJudge(bedrockCompletion{Text: "I could not evaluate these candidates.", StopReason: "end_turn"})
+	judge := stubJudge(modelCompletion{Text: "I could not evaluate these candidates.", StopReason: "end_turn"})
 	candidates := judgeBatchCandidates(3)
 
 	outcome := runJudge(context.Background(), judge, ReviewContext{}, candidates)
@@ -263,7 +263,7 @@ func TestReviewReportsTruncatedVerificationAsDegraded(t *testing.T) {
 	engine := judgeTestEngine(root, []Finding{
 		judgeTestFinding("bedrock-a.ai.review.1", "internal/app/app.go"),
 	})
-	engine.judge = stubJudge(bedrockCompletion{
+	engine.judge = stubJudge(modelCompletion{
 		Text:       judgeFixture(t, "judge-truncated-response.txt"),
 		StopReason: "max_tokens",
 	})
