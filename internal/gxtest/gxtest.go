@@ -1,6 +1,6 @@
 // Package gxtest builds the filesystem and git world a gx test runs in: a
-// GX_HOME, real git repositories, linked worktrees, trailer-stamped commits and
-// agent transcripts.
+// GX_HOME, real git repositories, linked worktrees, commits and agent
+// transcripts.
 //
 // It imports nothing from gx beyond the standard library, and that is a
 // gate rather than an accident. internal/storage/storagetest layers the
@@ -8,17 +8,10 @@
 // imports internal/storage — so a gx import here would either cycle or drag
 // internal/vcs and its git-probing package init into the fast test binaries of
 // internal/storage, internal/reviewbundle and internal/provenance.
-//
-// The one production constant this forces a copy of is the gx revision trailer
-// (see RevisionTrailerFormat), and that copy is pinned against the real one by
-// TestGxTestRevisionTrailerMatchesProduction in internal/hooks.
 package gxtest
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,14 +19,6 @@ import (
 	"testing"
 	"time"
 )
-
-// RevisionTrailerFormat mirrors vcs.RevisionTrailerFormat.
-//
-// A commit only produces a `changes` row — and therefore only ever gets
-// sessions attached to it — if it carries this trailer, so a harness that got
-// the format wrong would build repositories in which every session assertion
-// silently passes vacuously.
-const RevisionTrailerFormat = "gx: https://gx.run/r/%s"
 
 // World is one isolated gx installation: a GX_HOME nothing else writes to and a
 // home directory to hang agent transcripts off.
@@ -137,18 +122,16 @@ func (r *Repo) AddWorktree(t *testing.T, dir, branch string) *Repo {
 	return worktree
 }
 
-// Commit is one trailer-stamped commit.
+// Commit is one commit the harness made.
 type Commit struct {
-	SHA        string
-	RevisionID string
+	SHA string
 }
 
-// Commit writes files and commits them carrying a gx revision trailer, so the
-// push path's RecoverMissingRevisions can create the `changes` row that
-// sessions attach to.
+// Commit writes files and commits them with plain git and no gx hooks, the way
+// a commit made before `gx init` looks. The push path's RecoverMissingCommits
+// records it, creating the `changes` row that sessions attach to.
 func (r *Repo) Commit(t *testing.T, files map[string]string, subject string) Commit {
 	t.Helper()
-	revisionID := NewRevisionID(t)
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -163,8 +146,8 @@ func (r *Repo) Commit(t *testing.T, files map[string]string, subject string) Com
 		}
 		Git(t, r.Root, "add", name)
 	}
-	Git(t, r.Root, "commit", "--no-verify", "-m", StampRevisionTrailer(subject, revisionID))
-	return Commit{SHA: r.Rev(t, "HEAD"), RevisionID: revisionID}
+	Git(t, r.Root, "commit", "--no-verify", "-m", subject)
+	return Commit{SHA: r.Rev(t, "HEAD")}
 }
 
 // Rev resolves a git revision to its full SHA.
@@ -197,40 +180,6 @@ func GitOutput(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(string(out))
-}
-
-// NewRevisionID mints a gx revision identifier in the same shape
-// vcs.GenerateRevisionID produces: a URL-safe base64 encoding of 128 random
-// bits, which vcs.ValidRevisionID accepts.
-func NewRevisionID(t *testing.T) string {
-	t.Helper()
-	var raw [16]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		t.Fatalf("generate revision id: %v", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(raw[:])
-}
-
-// RevisionTrailerLine renders the gx identity trailer for a revision.
-func RevisionTrailerLine(revisionID string) string {
-	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" {
-		return ""
-	}
-	return fmt.Sprintf(RevisionTrailerFormat, revisionID)
-}
-
-// StampRevisionTrailer appends the gx identity trailer to a commit subject.
-func StampRevisionTrailer(message, revisionID string) string {
-	trailer := RevisionTrailerLine(revisionID)
-	if trailer == "" {
-		return message
-	}
-	body := strings.TrimRight(message, "\n")
-	if body == "" {
-		return trailer
-	}
-	return body + "\n\n" + trailer
 }
 
 // ClaudeProjectSlug is the directory name Claude Code derives from a repo root.

@@ -38,19 +38,16 @@ func (s *Service) gitChangeAtCommit(ctx context.Context, repoRoot, commitRef str
 	if err != nil {
 		return ChangeInfo{}, fmt.Errorf("read commit message: %w", err)
 	}
-	revisionIDs := ParseRevisionIDsFromMessage(message)
+	repo, repoErr := s.ResolveGxRepoAtPath(ctx, repoRoot)
 	changeID := commitOID
-	if len(revisionIDs) > 0 {
-		changeID = revisionIDs[len(revisionIDs)-1]
-	}
-	parentOID, _ := s.runTrimmed(ctx, repoRoot, "git", "rev-parse", commitOID+"^")
-	parentOID = strings.TrimSpace(parentOID)
 	var parentChangeID *string
-	if parentOID != "" {
-		parentMessage, parentErr := s.runTrimmed(ctx, repoRoot, "git", "log", "-1", "--format=%B", parentOID)
-		if parentErr == nil {
-			if ids := ParseRevisionIDsFromMessage(parentMessage); len(ids) > 0 {
-				parentChangeID = &ids[len(ids)-1]
+	if repoErr == nil {
+		if revision := s.recordedRevisionForCommit(ctx, repo, commitOID); revision != "" {
+			changeID = revision
+		}
+		if parentOID, _ := s.runTrimmed(ctx, repoRoot, "git", "rev-parse", commitOID+"^"); strings.TrimSpace(parentOID) != "" {
+			if parentRevision := s.recordedRevisionForCommit(ctx, repo, strings.TrimSpace(parentOID)); parentRevision != "" {
+				parentChangeID = &parentRevision
 			}
 		}
 	}
@@ -85,17 +82,24 @@ func (s *Service) gitChangeBySelector(ctx context.Context, repoRoot, selector st
 }
 
 func (s *Service) gitChangeByRevisionID(ctx context.Context, repoRoot, revisionID string) (ChangeInfo, error) {
-	out, err := s.runTrimmed(ctx, repoRoot, "git", "log", "-1", "--format=%H", "--grep="+RevisionTrailerLine(revisionID))
+	repo, err := s.ResolveGxRepoAtPath(ctx, repoRoot)
 	if err != nil {
 		return ChangeInfo{}, err
 	}
-	for _, line := range splitLines(out) {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		return s.gitChangeAtCommit(ctx, repoRoot, strings.TrimSpace(line))
+	store, err := openStore(ctx)
+	if err != nil {
+		return ChangeInfo{}, err
 	}
-	return ChangeInfo{}, fmt.Errorf("unknown revision %q", revisionID)
+	defer store.Close()
+	repoRow, err := store.FindRepoByIdentity(ctx, repo.GitCommonDir, repo.RootPath)
+	if err != nil || repoRow == nil {
+		return ChangeInfo{}, fmt.Errorf("unknown revision %q", revisionID)
+	}
+	change, err := store.FindChangeByJJChangeID(ctx, repoRow.ID, strings.TrimSpace(revisionID))
+	if err != nil || change == nil || strings.TrimSpace(change.CurrentCommitID) == "" {
+		return ChangeInfo{}, fmt.Errorf("unknown revision %q", revisionID)
+	}
+	return s.gitChangeAtCommit(ctx, repoRoot, change.CurrentCommitID)
 }
 
 func (s *Service) gitDiffForRev(ctx context.Context, repoRoot, rev string) (string, error) {

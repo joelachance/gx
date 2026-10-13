@@ -6,19 +6,6 @@ import (
 	"strings"
 )
 
-// PrepareCommitMessageHook ensures exactly one gx revision trailer is present.
-func PrepareCommitMessageHook(message string) (string, error) {
-	existing := ParseRevisionIDsFromMessage(message)
-	if len(existing) > 0 {
-		return StampRevisionTrailer(message, existing[len(existing)-1]), nil
-	}
-	revisionID, err := GenerateRevisionID()
-	if err != nil {
-		return "", err
-	}
-	return StampRevisionTrailer(message, revisionID), nil
-}
-
 // RunPostCommitHook records the latest git commit as a gx revision.
 func (s *Service) RunPostCommitHook(ctx context.Context, repoRoot string) error {
 	repo, err := s.ResolveGxRepoAtPath(ctx, repoRoot)
@@ -35,6 +22,14 @@ func (s *Service) RunPostCommitHook(ctx context.Context, repoRoot string) error 
 		}
 		if pending.WorktreeRoot == "" {
 			pending.WorktreeRoot = repo.RootPath
+		}
+		// An amend or a rebase rewrites a commit gx already knows. Git runs
+		// post-rewrite right after, mapping the old SHA to the new one, and
+		// that carries the existing revision over; recording the new SHA here
+		// would split one revision into two.
+		if rewrite, _ := s.runTrimmed(ctx, repo.RootPath, "git", "reflog", "-1", "--format=%gs", "HEAD"); isRewriteReflogSubject(rewrite) {
+			clearPendingCommitContext(repo.GitDir)
+			return nil
 		}
 		headOID, err := s.runTrimmed(ctx, repo.RootPath, "git", "rev-parse", "HEAD")
 		if err != nil {
@@ -80,15 +75,6 @@ func ParsePostRewriteMappings(input string) []CommitOIDMapping {
 }
 
 func (s *Service) commitResultFromDB(ctx context.Context, repo RepoInfo, commitOID string) (CommitResult, error) {
-	message, err := s.runTrimmed(ctx, repo.RootPath, "git", "log", "-1", "--format=%B", commitOID)
-	if err != nil {
-		return CommitResult{}, err
-	}
-	revisionIDs := ParseRevisionIDsFromMessage(message)
-	if len(revisionIDs) == 0 {
-		return CommitResult{}, fmt.Errorf("commit has no gx revision trailer")
-	}
-	revisionID := revisionIDs[len(revisionIDs)-1]
 	store, err := openStore(ctx)
 	if err != nil {
 		return CommitResult{}, err
@@ -98,7 +84,7 @@ func (s *Service) commitResultFromDB(ctx context.Context, repo RepoInfo, commitO
 	if err != nil || repoRow == nil {
 		return CommitResult{}, fmt.Errorf("repo not initialized")
 	}
-	changeRow, err := store.FindChangeByJJChangeID(ctx, repoRow.ID, revisionID)
+	changeRow, err := store.FindChangeByCommitID(ctx, repoRow.ID, commitOID)
 	if err != nil || changeRow == nil {
 		return CommitResult{}, fmt.Errorf("revision not recorded")
 	}
@@ -122,4 +108,12 @@ func (s *Service) commitResultFromDB(ctx context.Context, repo RepoInfo, commitO
 		OperationID:      commitOID,
 		ProvenanceStatus: "recorded",
 	}, nil
+}
+
+// isRewriteReflogSubject reports whether HEAD's latest reflog entry is an
+// amend or a rebase step, the two rewrites post-rewrite reports. A cherry-pick
+// is not one: it makes a new commit, and post-rewrite never hears of it.
+func isRewriteReflogSubject(subject string) bool {
+	subject = strings.TrimSpace(subject)
+	return strings.HasPrefix(subject, "commit (amend)") || strings.HasPrefix(subject, "rebase")
 }

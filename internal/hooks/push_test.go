@@ -10,7 +10,6 @@ import (
 
 	"github.com/satoricorp/gx/internal/hooks"
 	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
 )
 
 func TestRunPushAlwaysSucceedsWithNetworkUnavailable(t *testing.T) {
@@ -30,8 +29,8 @@ func TestRunPushAlwaysSucceedsWithNetworkUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunPush() error = %v, want nil so hook never blocks", err)
 	}
-	if len(outcome.RevisionIDs) != 1 || outcome.RevisionIDs[0] != "revpushaaaaa" {
-		t.Fatalf("RevisionIDs = %v, want [revpushaaaaa]", outcome.RevisionIDs)
+	if outcome.RecoveryError != "" {
+		t.Fatalf("RecoveryError = %q, want none", outcome.RecoveryError)
 	}
 }
 
@@ -92,8 +91,7 @@ func initPushHookRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	runGit(t, repo, "add", "feature.txt")
-	message := "feature\n\n" + vcs.RevisionTrailerLine("revpushaaaaa")
-	runGit(t, repo, "commit", "-m", message)
+	runGit(t, repo, "commit", "-m", "feature")
 	return repo
 }
 

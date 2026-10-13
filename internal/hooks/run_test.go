@@ -87,15 +87,11 @@ func TestRunPushRecoversMissingRevision(t *testing.T) {
 	if _, err := service.InitAtPath(context.Background(), repoRoot, vcs.InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	revisionID, err := vcs.GenerateRevisionID()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(repoRoot, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runGitInHookTest(t, repoRoot, "add", "feature.txt")
-	runGitInHookTest(t, repoRoot, "commit", "--no-verify", "-m", vcs.StampRevisionTrailer("feature", revisionID))
+	runGitInHookTest(t, repoRoot, "commit", "--no-verify", "-m", "feature")
 	commitOID := strings.TrimSpace(gitOutputInHookTest(t, repoRoot, "rev-parse", "HEAD"))
 
 	outcome, err := RunPush(context.Background(), PushOptions{
@@ -109,8 +105,9 @@ func TestRunPushRecoversMissingRevision(t *testing.T) {
 	if outcome.RecoveryError != "" {
 		t.Fatalf("recovery error = %q", outcome.RecoveryError)
 	}
-	if len(outcome.RevisionIDs) != 1 || outcome.RevisionIDs[0] != revisionID {
-		t.Fatalf("revision ids = %v, want %q", outcome.RevisionIDs, revisionID)
+	// Nothing has been pushed yet, so the initial commit is recorded too.
+	if outcome.RecoveredCommits != 2 {
+		t.Fatalf("recovered commits = %d, want 2", outcome.RecoveredCommits)
 	}
 	repo, err := service.ResolveGxRepoAtPath(context.Background(), repoRoot)
 	if err != nil {
@@ -149,7 +146,7 @@ func TestRunPushReportsRevisionScanFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(outcome.RecoveryError, "scan gx revision trailers") {
+	if !strings.Contains(outcome.RecoveryError, "list pushed commits") {
 		t.Fatalf("recovery error = %q, want revision scan failure", outcome.RecoveryError)
 	}
 }

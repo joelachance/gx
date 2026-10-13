@@ -2,7 +2,6 @@ package gxtest_test
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/satoricorp/gx/internal/gxtest"
@@ -45,22 +44,5 @@ func TestAddWorktreeSharesTheMainCommonDir(t *testing.T) {
 	}
 	if !worktree.IsLinkedWorktree() {
 		t.Fatal("linked worktree not reported as one")
-	}
-}
-
-// TestCommitStampsATrailer covers the property every session assertion built on
-// this harness depends on: without the gx trailer no `changes` row is created,
-// so sessions have nothing to attach to and the assertions pass vacuously.
-func TestCommitStampsATrailer(t *testing.T) {
-	world := gxtest.NewWorld(t)
-	repo := world.NewRepo(t)
-	commit := repo.Commit(t, map[string]string{"alpha.go": "package alpha\n"}, "add alpha")
-
-	if commit.SHA == "" || commit.RevisionID == "" {
-		t.Fatalf("Commit() = %+v, want both a sha and a revision id", commit)
-	}
-	message := gxtest.GitOutput(t, repo.Root, "log", "-1", "--pretty=%B")
-	if want := gxtest.RevisionTrailerLine(commit.RevisionID); !strings.Contains(message, want) {
-		t.Fatalf("commit message = %q, want it to carry %q", message, want)
 	}
 }

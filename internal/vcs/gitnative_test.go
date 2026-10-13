@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/satoricorp/gx/internal/storage"
 )
 
 func TestGenerateRevisionID(t *testing.T) {
@@ -26,38 +28,6 @@ func TestGenerateRevisionID(t *testing.T) {
 	}
 }
 
-func TestPrepareCommitMessageHookPreservesExistingTrailer(t *testing.T) {
-	existing, err := GenerateRevisionID()
-	if err != nil {
-		t.Fatal(err)
-	}
-	message := "add feature\n\n" + RevisionTrailerLine(existing)
-	got, err := PrepareCommitMessageHook(message)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(got, RevisionTrailerLine(existing)) {
-		t.Fatalf("PrepareCommitMessageHook() = %q, want preserved trailer", got)
-	}
-	if len(ParseRevisionIDsFromMessage(got)) != 1 {
-		t.Fatalf("PrepareCommitMessageHook() = %q, want exactly one trailer", got)
-	}
-}
-
-func TestPrepareCommitMessageHookAddsTrailer(t *testing.T) {
-	got, err := PrepareCommitMessageHook("add feature")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := ParseRevisionIDsFromMessage(got)
-	if len(ids) != 1 {
-		t.Fatalf("PrepareCommitMessageHook() = %q, want one trailer, got %d", got, len(ids))
-	}
-	if !ValidRevisionID(ids[0]) {
-		t.Fatalf("PrepareCommitMessageHook() trailer id = %q, invalid", ids[0])
-	}
-}
-
 func TestParsePostRewriteMappings(t *testing.T) {
 	mappings := ParsePostRewriteMappings("aaa111 bbb222\nccc333 ddd444\n")
 	if len(mappings) != 2 {
@@ -74,55 +44,6 @@ func TestNormalizeGitCommonDir(t *testing.T) {
 	want := "/tmp/repo/.git"
 	if got != want {
 		t.Fatalf("NormalizeGitCommonDir() = %q, want %q", got, want)
-	}
-}
-
-func TestPostCommitHookRecordsPlainGitCommit(t *testing.T) {
-	repo := initGitNativeTestRepo(t)
-	t.Setenv("GX_HOME", t.TempDir())
-	service := NewService()
-	if _, err := service.InitAtPath(context.Background(), repo, InitOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	writeGitNativeTestFile(t, repo, "feature.txt", "feature\n")
-	runGitNativeTestGit(t, repo, "add", "feature.txt")
-	stamped, err := PrepareCommitMessageHook("add feature")
-	if err != nil {
-		t.Fatal(err)
-	}
-	runGitNativeTestGit(t, repo, "commit", "-m", stamped)
-
-	// The post-commit hook runs without a pending context file; it must fall
-	// back to the repo it was handed and still record the revision.
-	if err := service.RunPostCommitHook(context.Background(), repo); err != nil {
-		t.Fatal(err)
-	}
-
-	message := runGitNativeTestGit(t, repo, "log", "-1", "--format=%B")
-	ids := ParseRevisionIDsFromMessage(message)
-	if len(ids) != 1 || !ValidRevisionID(ids[0]) {
-		t.Fatalf("commit message ids = %v, want exactly one valid revision id", ids)
-	}
-	headOID := strings.TrimSpace(runGitNativeTestGit(t, repo, "rev-parse", "HEAD"))
-	repoInfo, err := service.ResolveGxRepoAtPath(context.Background(), repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openStore(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	repoRow, err := store.FindRepoByIdentity(context.Background(), repoInfo.GitCommonDir, repoInfo.RootPath)
-	if err != nil || repoRow == nil {
-		t.Fatalf("FindRepoByIdentity() = %+v, %v", repoRow, err)
-	}
-	change, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, ids[0])
-	if err != nil || change == nil {
-		t.Fatalf("FindChangeByJJChangeID() = %+v, %v", change, err)
-	}
-	if change.CurrentCommitID != headOID {
-		t.Fatalf("recorded commit = %q, want %q", change.CurrentCommitID, headOID)
 	}
 }
 
@@ -173,55 +94,6 @@ func TestPendingContextIsolatedByLinkedWorktree(t *testing.T) {
 	}
 }
 
-func TestRecoverGitCommitByOIDUpdatesExistingRevision(t *testing.T) {
-	repoRoot := initGitNativeTestRepo(t)
-	t.Setenv("GX_HOME", t.TempDir())
-	service := NewService()
-	if _, err := service.InitAtPath(context.Background(), repoRoot, InitOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	revisionID, err := GenerateRevisionID()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeGitNativeTestFile(t, repoRoot, "feature.txt", "one\n")
-	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
-	message := StampRevisionTrailer("feature", revisionID)
-	runGitNativeTestGit(t, repoRoot, "commit", "-m", message)
-	oldOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
-	repo, err := service.ResolveGxRepoAtPath(context.Background(), repoRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.RecordGitCommit(context.Background(), repo, oldOID, PendingCommitContext{WorktreeRoot: repo.RootPath, GitCommonDir: repo.GitCommonDir}); err != nil {
-		t.Fatal(err)
-	}
-	writeGitNativeTestFile(t, repoRoot, "feature.txt", "two\n")
-	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
-	runGitNativeTestGit(t, repoRoot, "commit", "--amend", "-m", message)
-	newOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
-
-	store, err := openStore(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	repoRow, err := store.FindRepoByIdentity(context.Background(), repo.GitCommonDir, repo.RootPath)
-	if err != nil || repoRow == nil {
-		t.Fatalf("FindRepoByIdentity() = %+v, %v", repoRow, err)
-	}
-	if err := service.recoverGitCommitByOID(context.Background(), store, repo, *repoRow, newOID); err != nil {
-		t.Fatal(err)
-	}
-	change, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, revisionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if change == nil || change.CurrentCommitID != newOID {
-		t.Fatalf("recovered change = %+v, want commit %s", change, newOID)
-	}
-}
-
 func initGitNativeTestRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
@@ -250,4 +122,132 @@ func runGitNativeTestGit(t *testing.T, repo string, args ...string) string {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return string(out)
+}
+
+// recordedChangeForCommit reads the change ~/.gx recorded for a commit.
+func recordedChangeForCommit(t *testing.T, repo RepoInfo, commitOID string) *storage.Change {
+	t.Helper()
+	store, err := openStore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	repoRow, err := store.FindRepoByIdentity(context.Background(), repo.GitCommonDir, repo.RootPath)
+	if err != nil || repoRow == nil {
+		t.Fatalf("FindRepoByIdentity() = %+v, %v", repoRow, err)
+	}
+	change, err := store.FindChangeByCommitID(context.Background(), repoRow.ID, commitOID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return change
+}
+
+// A plain `git commit` is recorded as a revision in ~/.gx, and gx leaves its
+// message exactly as written.
+func TestPostCommitHookRecordsPlainGitCommit(t *testing.T) {
+	repoRoot := initGitNativeTestRepo(t)
+	t.Setenv("GX_HOME", t.TempDir())
+	service := NewService()
+	if _, err := service.InitAtPath(context.Background(), repoRoot, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	writeGitNativeTestFile(t, repoRoot, "feature.txt", "feature\n")
+	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
+	runGitNativeTestGit(t, repoRoot, "commit", "-m", "add feature")
+
+	// The post-commit hook runs without a pending context file; it must fall
+	// back to the repo it was handed and still record the revision.
+	if err := service.RunPostCommitHook(context.Background(), repoRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if message := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "log", "-1", "--format=%B")); message != "add feature" {
+		t.Fatalf("commit message = %q, want it untouched", message)
+	}
+	repo, err := service.ResolveGxRepoAtPath(context.Background(), repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
+	change := recordedChangeForCommit(t, repo, headOID)
+	if change == nil || !ValidRevisionID(change.JJChangeID) {
+		t.Fatalf("recorded change for HEAD = %+v, want one with a valid revision id", change)
+	}
+}
+
+// An amend keeps its revision. Git runs post-commit for the new commit before
+// post-rewrite maps the old SHA to it, so post-commit must not record the
+// amended commit as a revision of its own.
+func TestAmendKeepsTheRevision(t *testing.T) {
+	repoRoot := initGitNativeTestRepo(t)
+	t.Setenv("GX_HOME", t.TempDir())
+	service := NewService()
+	ctx := context.Background()
+	if _, err := service.InitAtPath(ctx, repoRoot, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := service.ResolveGxRepoAtPath(ctx, repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeGitNativeTestFile(t, repoRoot, "feature.txt", "one\n")
+	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
+	runGitNativeTestGit(t, repoRoot, "commit", "-m", "feature")
+	if err := service.RunPostCommitHook(ctx, repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	oldOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
+	original := recordedChangeForCommit(t, repo, oldOID)
+	if original == nil {
+		t.Fatal("first commit was not recorded")
+	}
+
+	writeGitNativeTestFile(t, repoRoot, "feature.txt", "two\n")
+	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
+	runGitNativeTestGit(t, repoRoot, "commit", "--amend", "-m", "feature")
+	newOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
+	if err := service.RunPostCommitHook(ctx, repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	if early := recordedChangeForCommit(t, repo, newOID); early != nil {
+		t.Fatalf("post-commit recorded the amended commit as revision %s; post-rewrite owns rewrites", early.JJChangeID)
+	}
+	if err := service.RunPostRewriteHook(ctx, repoRoot, []CommitOIDMapping{{OldOID: oldOID, NewOID: newOID}}); err != nil {
+		t.Fatal(err)
+	}
+	amended := recordedChangeForCommit(t, repo, newOID)
+	if amended == nil || amended.JJChangeID != original.JJChangeID {
+		t.Fatalf("amended commit's revision = %+v, want the original %s", amended, original.JJChangeID)
+	}
+}
+
+// A commit made before gx stopped writing trailers keeps the revision its
+// trailer names, so existing history stays linked.
+func TestRecordGitCommitKeepsALegacyTrailerRevision(t *testing.T) {
+	repoRoot := initGitNativeTestRepo(t)
+	t.Setenv("GX_HOME", t.TempDir())
+	service := NewService()
+	ctx := context.Background()
+	if _, err := service.InitAtPath(ctx, repoRoot, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := service.ResolveGxRepoAtPath(ctx, repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionID, err := GenerateRevisionID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeGitNativeTestFile(t, repoRoot, "feature.txt", "one\n")
+	runGitNativeTestGit(t, repoRoot, "add", "feature.txt")
+	runGitNativeTestGit(t, repoRoot, "commit", "-m", "feature\n\n"+legacyRevisionTrailerPrefix+revisionID)
+	headOID := strings.TrimSpace(runGitNativeTestGit(t, repoRoot, "rev-parse", "HEAD"))
+	if _, err := service.RecordGitCommit(ctx, repo, headOID, PendingCommitContext{WorktreeRoot: repo.RootPath, GitCommonDir: repo.GitCommonDir}); err != nil {
+		t.Fatal(err)
+	}
+	if change := recordedChangeForCommit(t, repo, headOID); change == nil || change.JJChangeID != revisionID {
+		t.Fatalf("recorded change = %+v, want the trailer's revision %s", change, revisionID)
+	}
 }

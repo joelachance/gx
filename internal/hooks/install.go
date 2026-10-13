@@ -53,10 +53,16 @@ func Install(opts InstallOptions) error {
 		return err
 	}
 	scripts := map[string]string{
-		"prepare-commit-msg": prepareCommitMsgScript(gxPath),
-		"post-commit":        postCommitScript(gxPath),
-		"post-rewrite":       postRewriteScript(gxPath),
-		"pre-push":           prePushScript(gxPath),
+		"post-commit":  postCommitScript(gxPath),
+		"post-rewrite": postRewriteScript(gxPath),
+		"pre-push":     prePushScript(gxPath),
+	}
+	// gx used to install a prepare-commit-msg hook to stamp a revision trailer
+	// into every commit. It no longer touches commit messages, so a hook gx
+	// wrote is removed; anyone else's is left alone.
+	staleHook := filepath.Join(hooksDir, "prepare-commit-msg")
+	if data, readErr := os.ReadFile(staleHook); readErr == nil && gxOwnedHook("prepare-commit-msg", string(data)) {
+		_ = os.Remove(staleHook)
 	}
 	for name, script := range scripts {
 		hookPath := filepath.Join(hooksDir, name)
@@ -85,7 +91,7 @@ func IsInstalled(repoRoot string) bool {
 	if err != nil {
 		return false
 	}
-	for _, name := range []string{"prepare-commit-msg", "post-commit", "post-rewrite", "pre-push"} {
+	for _, name := range []string{"post-commit", "post-rewrite", "pre-push"} {
 		data, err := os.ReadFile(filepath.Join(hooksDir, name))
 		if err != nil || !containsHookMarker(string(data)) {
 			return false
@@ -124,15 +130,6 @@ if [ ! -f "$gx_bin" ] || [ ! -x "$gx_bin" ]; then
   gx_bin="$(command -v gx 2>/dev/null)" || gx_bin=""
 fi
 [ -n "$gx_bin" ] || exit 0`, gxPath)
-}
-
-func prepareCommitMsgScript(gxPath string) string {
-	return fmt.Sprintf(`#!/bin/sh
-%s
-%s
-%s
-"$gx_bin" __hooks prepare-commit-msg --repo "$repo" --message-path "$1"
-`, hookMarker, hookResolveGx(gxPath), hookRepoArg())
 }
 
 func postCommitScript(gxPath string) string {

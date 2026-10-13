@@ -84,11 +84,11 @@ func TestInstallGlobalWritesChainingScripts(t *testing.T) {
 			want: []string{
 				"# gx lifecycle hooks",
 				"# gx global lifecycle hooks",
-				"__hooks prepare-commit-msg",
-				"command -v gx",
 				"gx_resolve_local_hook prepare-commit-msg",
 				`exec "$gx_local_hook" "$@"`,
 			},
+			// gx no longer touches commit messages; this only forwards.
+			avoid: []string{"__hooks", "capture push"},
 		},
 		{
 			name: "post-commit",
@@ -433,7 +433,7 @@ func TestPerRepoInstallUnaffectedByGlobalSupport(t *testing.T) {
 	if !hooks.IsInstalled(repo) {
 		t.Fatal("per-repo install did not register lifecycle hooks")
 	}
-	for _, name := range []string{"prepare-commit-msg", "post-commit", "post-rewrite", "pre-push"} {
+	for _, name := range []string{"post-commit", "post-rewrite", "pre-push"} {
 		content := readFile(t, filepath.Join(repo, ".git", "hooks", name))
 		if !strings.Contains(content, "# gx lifecycle hooks") {
 			t.Fatalf("per-repo %s hook missing marker:\n%s", name, content)
@@ -497,22 +497,6 @@ func TestEnabledForRepoHonorsOptOut(t *testing.T) {
 				t.Fatalf("EnabledForRepo(%s) = %v, want %v", tc.name, got, tc.want)
 			}
 		})
-	}
-}
-
-func TestPrepareCommitMsgRespectsRepoOptOut(t *testing.T) {
-	repo := t.TempDir()
-	runGitInRepo(t, repo, "init")
-	runGitInRepo(t, repo, "config", "gx.enabled", "false")
-	messagePath := filepath.Join(repo, "COMMIT_EDITMSG")
-	if err := os.WriteFile(messagePath, []byte("add feature\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := hooks.PrepareCommitMsg(hooks.PrepareCommitMsgOptions{RepoRoot: repo, MessagePath: messagePath}); err != nil {
-		t.Fatal(err)
-	}
-	if got := readFile(t, messagePath); strings.Contains(got, "gx: https://gx.run/r/") {
-		t.Fatalf("opted-out repo still got a gx trailer: %q", got)
 	}
 }
 

@@ -60,8 +60,8 @@ type PushPayload struct {
 }
 
 // RevisionPayload describes one pushed commit, oldest first in
-// Bundle.Revisions. RevisionID is the gx trailer ID from the commit message
-// and is empty for commits without a trailer.
+// Bundle.Revisions. RevisionID is the gx revision recorded for the commit and
+// is empty for commits gx never recorded.
 type RevisionPayload struct {
 	RevisionID           string                `json:"revision_id"`
 	CommitID             string                `json:"commit_id"`

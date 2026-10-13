@@ -22,7 +22,6 @@ import (
 	"github.com/satoricorp/gx/internal/capture/redact"
 	"github.com/satoricorp/gx/internal/capture/repobind"
 	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
 )
 
 const defaultTimeSlack = 24 * time.Hour
@@ -173,10 +172,7 @@ func Run(ctx context.Context, opts RunOptions) (Result, error) {
 	}
 	discovered := discovery.Sessions
 
-	revisionIDs, err := vcs.RevisionIDsInGitRange(ctx, repoRoot, refRange)
-	if err != nil {
-		return Result{}, fmt.Errorf("resolve gx revision IDs: %w", err)
-	}
+	var revisionIDs []string
 
 	stager := opts.DB
 	if stager == nil {

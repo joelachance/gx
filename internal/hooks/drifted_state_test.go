@@ -185,31 +185,6 @@ func TestRunPushFromLinkedWorktreeOnAWeatheredDatabase(t *testing.T) {
 	}
 }
 
-// TestGxTestRevisionTrailerMatchesProduction pins internal/gxtest's copy of the
-// gx trailer against the real one.
-//
-// gxtest cannot import internal/vcs — internal/vcs imports internal/storage,
-// which internal/storage/storagetest builds on, and dragging vcs into the fast
-// storage/reviewbundle test binaries is the thing the layering exists to
-// prevent. So the trailer format is duplicated, and this assertion lives here,
-// in a package that already imports both. Without it a drift in the trailer
-// would silently stop the harness's commits from producing `changes` rows, and
-// every session assertion built on them would pass vacuously.
-func TestGxTestRevisionTrailerMatchesProduction(t *testing.T) {
-	const revisionID = "AbCdEfGhIjKlMnOpQrS"
-	if got, want := gxtest.RevisionTrailerLine(revisionID), vcs.RevisionTrailerLine(revisionID); got != want {
-		t.Fatalf("gxtest.RevisionTrailerLine() = %q, want %q", got, want)
-	}
-	if got, want := gxtest.StampRevisionTrailer("add gamma", revisionID), vcs.StampRevisionTrailer("add gamma", revisionID); got != want {
-		t.Fatalf("gxtest.StampRevisionTrailer() = %q, want %q", got, want)
-	}
-	// The ids the harness mints must be ones production would accept, or
-	// RecoverMissingRevisions would drop the commits it stamps.
-	if id := gxtest.NewRevisionID(t); !vcs.ValidRevisionID(id) {
-		t.Fatalf("gxtest.NewRevisionID() = %q, which vcs.ValidRevisionID rejects", id)
-	}
-}
-
 // TestGxTestWorldIsolatesGxHome pins the guard that the 32 stray rows in the
 // author's real ~/.gx/gx.db exist for: four tests that never set GX_HOME wrote
 // straight into the production database, and storage.DefaultDir still falls

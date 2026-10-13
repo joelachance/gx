@@ -123,28 +123,13 @@ func TestPerRepoHooksResolveGxAtRunTime(t *testing.T) {
 		}
 	})
 
-	t.Run("prepare-commit-msg exits zero without gx", func(t *testing.T) {
+	t.Run("no prepare-commit-msg hook", func(t *testing.T) {
 		install(filepath.Join(work, "missing", "gx"))
-		hookPath := filepath.Join(repo, ".git", "hooks", "prepare-commit-msg")
-		messagePath := filepath.Join(repo, ".git", "COMMIT_EDITMSG")
-		if err := os.WriteFile(messagePath, []byte("subject\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		emptyDir := filepath.Join(work, "empty")
-		if err := os.MkdirAll(emptyDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command(hookPath, messagePath)
-		cmd.Dir = repo
-		cmd.Env = append(os.Environ(), "PATH="+emptyDir)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("prepare-commit-msg without gx must exit 0 (a failing hook aborts the commit), got %v\n%s", err, out)
-		}
-		if strings.TrimSpace(string(out)) != "" {
-			t.Fatalf("prepare-commit-msg without gx must be silent, got:\n%s", out)
+		if _, err := os.Stat(filepath.Join(repo, ".git", "hooks", "prepare-commit-msg")); !os.IsNotExist(err) {
+			t.Fatalf("gx installed a prepare-commit-msg hook (stat err = %v); gx no longer touches commit messages", err)
 		}
 	})
+
 }
 
 func TestRefRangeForPush(t *testing.T) {

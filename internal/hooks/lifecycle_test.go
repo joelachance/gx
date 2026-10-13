@@ -26,7 +26,7 @@ func TestInstallLifecycleHooksUsesGitHooksDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"prepare-commit-msg", "post-commit", "post-rewrite", "pre-push"} {
+	for _, name := range []string{"post-commit", "post-rewrite", "pre-push"} {
 		data, err := os.ReadFile(filepath.Join(hooksDir, name))
 		if err != nil {
 			t.Fatalf("read %s hook: %v", name, err)
@@ -37,7 +37,9 @@ func TestInstallLifecycleHooksUsesGitHooksDir(t *testing.T) {
 	}
 }
 
-func TestPrepareCommitMsgHook(t *testing.T) {
+// Hooks installed by an older gx still call prepare-commit-msg, and without
+// `|| true`, so it must succeed and leave the message as the author wrote it.
+func TestPrepareCommitMsgLeavesTheMessageAlone(t *testing.T) {
 	repo := t.TempDir()
 	runGitInRepo(t, repo, "init")
 	messagePath := filepath.Join(repo, "COMMIT_EDITMSG")
@@ -54,8 +56,8 @@ func TestPrepareCommitMsgHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "gx: https://gx.run/r/") {
-		t.Fatalf("message = %q, want gx trailer", string(data))
+	if string(data) != "add feature\n" {
+		t.Fatalf("message = %q, want it untouched", string(data))
 	}
 }
 
@@ -74,9 +76,8 @@ func TestPlainGitCommitWithInstalledHooks(t *testing.T) {
 	}
 	runGitInRepo(t, repo, "add", "feature.txt")
 	runGitInRepo(t, repo, "commit", "-m", "add feature")
-	message := gitOutput(t, repo, "log", "-1", "--format=%B")
-	if strings.Count(message, "gx: https://gx.run/r/") != 1 {
-		t.Fatalf("commit message = %q, want exactly one gx trailer", message)
+	if message := gitOutput(t, repo, "log", "-1", "--format=%B"); strings.TrimSpace(message) != "add feature" {
+		t.Fatalf("commit message = %q, want it untouched", message)
 	}
 }
 
@@ -184,10 +185,8 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 		t.Fatal("bootstrap did not install lifecycle hooks")
 	}
 	runGitInRepo(t, linked, "commit", "-m", "linked worktree commit")
-	linkedMessage := gitOutput(t, linked, "log", "-1", "--format=%B")
-	revisionIDs := vcs.ParseRevisionIDsFromMessage(linkedMessage)
-	if len(revisionIDs) != 1 {
-		t.Fatalf("linked commit message has revision ids %v", revisionIDs)
+	if message := gitOutput(t, linked, "log", "-1", "--format=%B"); strings.TrimSpace(message) != "linked worktree commit" {
+		t.Fatalf("linked commit message = %q, want it untouched", message)
 	}
 	linkedOID := strings.TrimSpace(gitOutput(t, linked, "rev-parse", "HEAD"))
 
@@ -215,11 +214,8 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 		t.Fatalf("IsInitializedRepo() = %v, %v", initialized, err)
 	}
 	change, err := store.FindChangeByCommitID(context.Background(), repoRow.ID, linkedOID)
-	if err != nil || change == nil {
+	if err != nil || change == nil || !vcs.ValidRevisionID(change.JJChangeID) {
 		t.Fatalf("FindChangeByCommitID() = %+v, %v", change, err)
-	}
-	if change.JJChangeID != revisionIDs[0] {
-		t.Fatalf("stored revision = %q, want %q", change.JJChangeID, revisionIDs[0])
 	}
 
 	if err := os.WriteFile(filepath.Join(linked, "plain.txt"), []byte("plain\n"), 0o644); err != nil {
@@ -227,12 +223,12 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 	}
 	runGitInRepo(t, linked, "add", "plain.txt")
 	runGitInRepo(t, linked, "commit", "-m", "plain linked commit")
-	plainMessage := gitOutput(t, linked, "log", "-1", "--format=%B")
-	plainRevisionIDs := vcs.ParseRevisionIDsFromMessage(plainMessage)
-	if len(plainRevisionIDs) != 1 {
-		t.Fatalf("plain commit message has revision ids %v", plainRevisionIDs)
-	}
 	plainOID := strings.TrimSpace(gitOutput(t, linked, "rev-parse", "HEAD"))
+	plainChange, err := store.FindChangeByCommitID(context.Background(), repoRow.ID, plainOID)
+	if err != nil || plainChange == nil {
+		t.Fatalf("plain commit was not recorded: %+v, %v", plainChange, err)
+	}
+	plainRevision := plainChange.JJChangeID
 
 	if err := os.WriteFile(filepath.Join(linked, "plain.txt"), []byte("plain amended\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -243,13 +239,9 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 	if amendedOID == plainOID {
 		t.Fatal("amend did not change the Git commit OID")
 	}
-	amendedRevisionIDs := vcs.ParseRevisionIDsFromMessage(gitOutput(t, linked, "log", "-1", "--format=%B"))
-	if len(amendedRevisionIDs) != 1 || amendedRevisionIDs[0] != plainRevisionIDs[0] {
-		t.Fatalf("amend changed gx revision identity: before=%v after=%v", plainRevisionIDs, amendedRevisionIDs)
-	}
-	plainChange, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, plainRevisionIDs[0])
-	if err != nil || plainChange == nil || plainChange.CurrentCommitID != amendedOID {
-		t.Fatalf("amended change = %+v, %v; want commit %s", plainChange, err, amendedOID)
+	amendedChange, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, plainRevision)
+	if err != nil || amendedChange == nil || amendedChange.CurrentCommitID != amendedOID {
+		t.Fatalf("amended change = %+v, %v; want revision %s at commit %s", amendedChange, err, plainRevision, amendedOID)
 	}
 
 	hooksDir, err := hooks.ResolveHooksDir(context.Background(), linked)
@@ -267,7 +259,7 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 	runGitInRepo(t, linked, "add", "plain.txt")
 	runGitInRepo(t, linked, "commit", "--amend", "--no-edit")
 	missedOID := strings.TrimSpace(gitOutput(t, linked, "rev-parse", "HEAD"))
-	staleChange, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, plainRevisionIDs[0])
+	staleChange, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, plainRevision)
 	if err != nil || staleChange == nil || staleChange.CurrentCommitID != amendedOID {
 		t.Fatalf("change was not stale before recovery: %+v, %v", staleChange, err)
 	}
@@ -283,9 +275,11 @@ func TestBootstrapFromLinkedWorktree(t *testing.T) {
 	if outcome.RecoveryError != "" {
 		t.Fatalf("pre-push recovery error = %q", outcome.RecoveryError)
 	}
-	recoveredChange, err := store.FindChangeByJJChangeID(context.Background(), repoRow.ID, plainRevisionIDs[0])
-	if err != nil || recoveredChange == nil || recoveredChange.CurrentCommitID != missedOID {
-		t.Fatalf("recovered change = %+v, %v; want commit %s", recoveredChange, err, missedOID)
+	// With post-rewrite disabled nothing linked the rewrite to its revision,
+	// so the push records the missed commit as a revision of its own.
+	recoveredChange, err := store.FindChangeByCommitID(context.Background(), repoRow.ID, missedOID)
+	if err != nil || recoveredChange == nil || recoveredChange.JJChangeID == plainRevision {
+		t.Fatalf("recovered change = %+v, %v; want a new revision for commit %s", recoveredChange, err, missedOID)
 	}
 	if got := strings.TrimSpace(gitOutput(t, primary, "rev-parse", "HEAD")); got != primaryHead {
 		t.Fatalf("primary HEAD moved: got %s want %s", got, primaryHead)

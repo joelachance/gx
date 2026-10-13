@@ -216,11 +216,11 @@ func TestRunPushAttachesLinksToTheirOwnCommits(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := gitRev(t, repo, "HEAD")
-	firstSHA := commitWithTrailer(t, repo, map[string]string{"alpha.go": alpha}, "add alpha")
+	firstSHA := commitFiles(t, repo, map[string]string{"alpha.go": alpha}, "add alpha")
 	// A commit with no agent transcript behind it at all: its hunks are
 	// human-authored and must contribute no session.
-	humanSHA := commitWithTrailer(t, repo, map[string]string{"human.go": "package human\n\nvar Hand = 7\n"}, "hand written")
-	secondSHA := commitWithTrailer(t, repo, map[string]string{"beta.go": beta}, "add beta")
+	humanSHA := commitFiles(t, repo, map[string]string{"human.go": "package human\n\nvar Hand = 7\n"}, "hand written")
+	secondSHA := commitFiles(t, repo, map[string]string{"beta.go": beta}, "add beta")
 
 	projects := filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(repo))
 	writeClaudeTranscript(t, filepath.Join(projects, coldStartConversation+".jsonl"),
@@ -282,7 +282,7 @@ func TestRunPushFromLinkedWorktreePublishesSessions(t *testing.T) {
 	if _, err := vcs.NewService().InitAtPath(ctx, main, vcs.InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	commitWithTrailer(t, main, map[string]string{"seed.go": "package seed\n"}, "seed")
+	commitFiles(t, main, map[string]string{"seed.go": "package seed\n"}, "seed")
 	if _, err := vcs.NewService().ResolveGxRepoAtPath(ctx, main); err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestRunPushFromLinkedWorktreePublishesSessions(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "linked")
 	runGit(t, main, "worktree", "add", "-b", "feature", worktree)
 	base := gitRev(t, worktree, "HEAD")
-	head := commitWithTrailer(t, worktree, map[string]string{"gamma.go": gamma}, "add gamma")
+	head := commitFiles(t, worktree, map[string]string{"gamma.go": gamma}, "add gamma")
 
 	writeClaudeTranscript(t,
 		filepath.Join(home, ".claude", "projects", gxtest.ClaudeProjectSlug(worktree), worktreeConversation+".jsonl"),
@@ -333,7 +333,7 @@ func coldStartRepo(t *testing.T, files map[string]string) (repoRoot, baseSHA, he
 		t.Fatal(err)
 	}
 	base := gitRev(t, repo, "HEAD")
-	head := commitWithTrailer(t, repo, files, "add sources")
+	head := commitFiles(t, repo, files, "add sources")
 	return repo, base, head
 }
 
@@ -354,14 +354,10 @@ func initBareGitRepo(t *testing.T, repo string) {
 	runGit(t, repo, "commit", "--no-verify", "-m", "initial")
 }
 
-// commitWithTrailer writes files and commits them with a gx revision trailer,
-// so RecoverMissingRevisions can create the `changes` row the sessions attach to.
-func commitWithTrailer(t *testing.T, repo string, files map[string]string, subject string) string {
+// commitFiles writes files and commits them without gx's hooks, so the push
+// path's RecoverMissingCommits creates the `changes` row the sessions attach to.
+func commitFiles(t *testing.T, repo string, files map[string]string, subject string) string {
 	t.Helper()
-	revisionID, err := vcs.GenerateRevisionID()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for name, content := range files {
 		path := filepath.Join(repo, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -372,7 +368,7 @@ func commitWithTrailer(t *testing.T, repo string, files map[string]string, subje
 		}
 		runGit(t, repo, "add", name)
 	}
-	runGit(t, repo, "commit", "--no-verify", "-m", vcs.StampRevisionTrailer(subject, revisionID))
+	runGit(t, repo, "commit", "--no-verify", "-m", subject)
 	return gitRev(t, repo, "HEAD")
 }
 

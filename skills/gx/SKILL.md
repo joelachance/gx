@@ -47,8 +47,8 @@ gh pr create                           # 5. open the PR (only when the user want
 ```
 
 `git commit` records the change on the current branch and advances `HEAD`; gx's
-`prepare-commit-msg` and `post-commit` hooks record it as a **revision** behind the
-scenes, leaving Git's output unchanged (`[branch shorthash] message`). To start a new
+`post-commit` hook records it as a **revision** behind the scenes, leaving the commit
+message and Git's output unchanged (`[branch shorthash] message`). To start a new
 line of work (a new stack), branch first with plain Git:
 
 ```bash
@@ -61,7 +61,7 @@ If nothing is staged, `git commit` reports "nothing to commit" — run `git add 
 
 ### Provenance is captured automatically
 
-`gx init` installs a pre-push hook that runs capture/publication on `git push`: it records
+`gx init` installs a pre-push hook that runs capture on `git push`: it records
 the coding session and matches it to the hunks each revision changed, so the review bundle
 knows which session produced each change. Just `git push` — the provenance rides along.
 There is no manual attach or self-report step; do not try to declare provenance by hand.
@@ -80,8 +80,7 @@ Check state after commits and before a push. One check at a decision point is en
 ## Amend or rewrite recorded work
 
 Use normal Git for history edits. The `post-rewrite` hook follows amended and rebased
-commits to their new OIDs; keep the gx revision trailer in the message so metadata stays
-linked:
+commits to their new OIDs, so each keeps its revision and metadata stays linked:
 
 ```bash
 git commit --amend

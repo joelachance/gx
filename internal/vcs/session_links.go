@@ -53,8 +53,8 @@ func (s *Service) AttachSessionsFromHunkLinks(ctx context.Context, repo RepoInfo
 				return err
 			}
 			if change == nil {
-				// The commit has no recorded revision (no gx trailer, or the
-				// recovery pass could not resolve it). Nothing to link to.
+				// The commit has no recorded revision (the recovery pass
+				// could not record it). Nothing to link to.
 				continue
 			}
 			candidates := bySHA[sha]

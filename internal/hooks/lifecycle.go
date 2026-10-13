@@ -19,28 +19,13 @@ type PrepareCommitMsgOptions struct {
 	MessagePath string
 }
 
-// PrepareCommitMsg preserves or adds exactly one gx revision trailer.
+// PrepareCommitMsg used to stamp a gx revision trailer into the commit
+// message. gx no longer touches commit messages: a commit's revision lives in
+// ~/.gx, keyed by its SHA. Hook scripts installed in existing repositories still
+// call this without `|| true`, so it stays, does nothing, and never fails a
+// commit.
 func PrepareCommitMsg(opts PrepareCommitMsgOptions) error {
-	repoRoot := strings.TrimSpace(opts.RepoRoot)
-	messagePath := strings.TrimSpace(opts.MessagePath)
-	if repoRoot == "" || messagePath == "" {
-		return fmt.Errorf("repo root and message path required")
-	}
-	if !EnabledForRepo(context.Background(), repoRoot) {
-		return nil
-	}
-	data, err := os.ReadFile(messagePath)
-	if err != nil {
-		return fmt.Errorf("read commit message: %w", err)
-	}
-	updated, err := vcs.PrepareCommitMessageHook(string(data))
-	if err != nil {
-		return err
-	}
-	if updated == string(data) {
-		return nil
-	}
-	return os.WriteFile(messagePath, []byte(updated), 0o644)
+	return nil
 }
 
 // PostCommitOptions configures the post-commit hook handler.

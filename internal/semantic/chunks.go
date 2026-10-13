@@ -50,7 +50,7 @@ type reviewTarget struct {
 	ReviewContext *reviewbundle.ReviewContextPayload
 }
 
-// revisionKey identifies a target even when a commit carries no gx trailer.
+// revisionKey identifies a target even when gx recorded no revision for it.
 func (t reviewTarget) revisionKey() string {
 	if strings.TrimSpace(t.RevisionID) != "" {
 		return t.RevisionID

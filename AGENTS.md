@@ -7,7 +7,7 @@ Default flow:
 - Run `git commit -m "..."` to save. A gx hook records the commit as a reviewable revision.
 - Run plain `git push` to publish. The gx pre-push hook captures the coding session behind the change — do not run `gx capture push` yourself; it bypasses the hook.
 - Open PRs with `gh pr create` (or the GitHub UI).
-- To amend, use `git commit --amend` and preserve the gx revision trailer in the message.
+- To amend, use `git commit --amend`; the gx post-rewrite hook keeps the revision.
 
 For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.
 
