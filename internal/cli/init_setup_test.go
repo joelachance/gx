@@ -28,7 +28,7 @@ func TestAgentsMDContainsSnippet(t *testing.T) {
 			t.Fatalf("agentsMDSnippet still makes a gx Cloud claim: %q", cloudClaim)
 		}
 	}
-	for _, stale := range []string{"gx_edit", "gx base", "gx edit", "gx commit", "gx status", "`gx push`"} {
+	for _, stale := range []string{"gx_edit", "gx base", "gx edit", "gx commit", "gx status", "`gx push`", "trailer"} {
 		if strings.Contains(agentsMDSnippet, stale) {
 			t.Fatalf("agentsMDSnippet contains removed command %q", stale)
 		}
@@ -38,7 +38,7 @@ func TestAgentsMDContainsSnippet(t *testing.T) {
 		"there is no gx save verb",
 		"git commit -m",
 		"`git commit --amend`",
-		"preserve the gx revision trailer",
+		"post-rewrite hook keeps the revision",
 		"gx_review",
 	} {
 		if !strings.Contains(agentsMDSnippet, want) {

@@ -22,9 +22,7 @@ import (
 // ones, which is exactly where a shared fixture has to stay cheap or nobody
 // uses it.
 //
-// The layering is: internal/gxtest imports nothing from gx at all (which is why
-// it carries its own copy of the revision trailer, pinned by
-// TestGxTestRevisionTrailerMatchesProduction in internal/hooks), and
+// The layering is: internal/gxtest imports nothing from gx at all, and
 // internal/storage/storagetest imports only internal/storage and
 // internal/gxtest. Checking internal/storage too closes the transitive hole:
 // if storage ever imported vcs, storagetest would inherit it.

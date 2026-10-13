@@ -244,7 +244,7 @@ type PushResult struct {
 }
 
 // PushedCommit is one commit in the pushed range, oldest first. RevisionID is
-// the gx trailer ID when the commit carries one, otherwise empty.
+// the gx revision recorded for the commit, or empty when there is none.
 type PushedCommit struct {
 	CommitID   string
 	RevisionID string

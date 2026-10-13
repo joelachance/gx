@@ -10,8 +10,11 @@ import (
 const (
 	PlaceholderDescription      = "(no description set)"
 	PendingRemainderDescription = "gx: pending remainder"
-	// RevisionTrailerFormat is the gx identity trailer line template.
-	RevisionTrailerFormat = "gx: https://gx.run/r/%s"
+	// legacyRevisionTrailerPrefix is the identity line gx used to append to
+	// every commit message. gx no longer writes it: a commit's revision lives
+	// in ~/.gx, keyed by its SHA. Commits that already carry the line keep the
+	// revision it names.
+	legacyRevisionTrailerPrefix = "gx: https://gx.run/r/"
 )
 
 var (
@@ -36,60 +39,6 @@ func ValidateCommitMessage(message string) error {
 		return fmt.Errorf("commit message cannot be %q", PlaceholderDescription)
 	}
 	return nil
-}
-
-func RevisionTrailerLine(revisionID string) string {
-	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" {
-		return ""
-	}
-	return fmt.Sprintf(RevisionTrailerFormat, revisionID)
-}
-
-// StampRevisionTrailer returns message carrying exactly one gx identity
-// trailer for revisionID. gx trailers from a prior revision identity are
-// replaced, never accumulated.
-func StampRevisionTrailer(message, revisionID string) string {
-	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" {
-		return message
-	}
-	trailer := RevisionTrailerLine(revisionID)
-	lines := strings.Split(message, "\n")
-	kept := lines[:0]
-	for _, line := range lines {
-		if isRevisionTrailerLine(line) {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	body := strings.TrimRight(strings.Join(kept, "\n"), "\n")
-	if body == "" {
-		return trailer
-	}
-	return body + "\n\n" + trailer
-}
-
-func isRevisionTrailerLine(line string) bool {
-	return strings.HasPrefix(strings.TrimSpace(line), revisionTrailerPrefix())
-}
-
-// revisionTrailerPresent reports whether message already carries the canonical
-// gx trailer for revisionID and no stale trailers, i.e. re-stamping would be a
-// no-op.
-func revisionTrailerPresent(message, revisionID string) bool {
-	return StampRevisionTrailer(message, revisionID) == strings.TrimRight(message, "\n")
-}
-
-func revisionTrailerPrefix() string {
-	return fmt.Sprintf(RevisionTrailerFormat, "")
-}
-
-func FinalizeCommitMessage(message, revisionID string) (string, error) {
-	if err := ValidateCommitMessage(message); err != nil {
-		return "", err
-	}
-	return StampRevisionTrailer(message, revisionID), nil
 }
 
 func validateRecordedChangeDescription(description string) error {
