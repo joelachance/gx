@@ -8,8 +8,13 @@ import (
 	"strings"
 )
 
+// Matches the current trailer and the URL form it replaced, so a repository
+// with history from both still resolves every revision in it.
 var revisionTrailerLinePattern = regexp.MustCompile(
-	`(?m)^` + regexp.QuoteMeta(strings.TrimSuffix(RevisionTrailerFormat, "%s")) + `(\S+)\s*$`,
+	`(?m)^(?:` +
+		regexp.QuoteMeta(strings.TrimSuffix(RevisionTrailerFormat, "%s")) +
+		`|` + regexp.QuoteMeta(LegacyRevisionTrailerPrefix) +
+		`)(\S+)\s*$`,
 )
 
 // ParseRevisionIDsFromMessage returns gx revision IDs embedded in a commit message.

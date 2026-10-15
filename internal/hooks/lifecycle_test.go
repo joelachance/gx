@@ -54,7 +54,7 @@ func TestPrepareCommitMsgHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "gx: https://gx.run/r/") {
+	if !strings.Contains(string(data), vcs.RevisionTrailerFormat[:len(vcs.RevisionTrailerFormat)-2]) {
 		t.Fatalf("message = %q, want gx trailer", string(data))
 	}
 }
@@ -75,7 +75,7 @@ func TestPlainGitCommitWithInstalledHooks(t *testing.T) {
 	runGitInRepo(t, repo, "add", "feature.txt")
 	runGitInRepo(t, repo, "commit", "-m", "add feature")
 	message := gitOutput(t, repo, "log", "-1", "--format=%B")
-	if strings.Count(message, "gx: https://gx.run/r/") != 1 {
+	if strings.Count(message, vcs.RevisionTrailerFormat[:len(vcs.RevisionTrailerFormat)-2]) != 1 {
 		t.Fatalf("commit message = %q, want exactly one gx trailer", message)
 	}
 }

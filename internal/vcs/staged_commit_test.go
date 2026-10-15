@@ -149,13 +149,15 @@ func TestRecordedCommitStampsGxTrailer(t *testing.T) {
 		t.Fatalf("git commit message = %q, want trailer %q", gitMessage, trailer)
 	}
 
-	parsed, err := gitInterpretTrailer(t, root, gitMessage, "gx")
+	// git keys a trailer on the token before the colon, so the key is the
+	// format's prefix with the %s stripped, not "gx".
+	parsed, err := gitInterpretTrailer(t, root, gitMessage, "gx-revision")
 	if err != nil {
 		t.Fatalf("gitInterpretTrailer() error = %v", err)
 	}
-	wantTrailerValue := fmt.Sprintf("https://gx.run/r/%s", result.Change.ChangeID)
+	wantTrailerValue := result.Change.ChangeID
 	if parsed != wantTrailerValue {
-		t.Fatalf("parsed gx trailer = %q, want %q", parsed, wantTrailerValue)
+		t.Fatalf("parsed gx-revision trailer = %q, want %q", parsed, wantTrailerValue)
 	}
 }
 

@@ -112,3 +112,28 @@ func commitWithTrailer(t *testing.T, repo, subject, revisionID string) {
 		t.Fatalf("git commit: %v: %s", err, out)
 	}
 }
+
+// The URL trailer is gone from new commits, but every repository already using
+// gx has commits carrying it. If the parser stopped matching the old prefix,
+// a branch's history would silently read as containing no gx revisions at all.
+func TestParseRevisionIDsFromMessageAcceptsTheLegacyURLTrailer(t *testing.T) {
+	const id = "sA3t0rYtrailfrom07"
+	got := ParseRevisionIDsFromMessage("fix the parser\n\ngx: https://gx.run/r/" + id + "\n")
+	if len(got) != 1 || got[0] != id {
+		t.Fatalf("ParseRevisionIDsFromMessage() = %v, want [%s]", got, id)
+	}
+}
+
+func TestParseRevisionIDsFromMessageAcceptsBothForms(t *testing.T) {
+	const oldID = "oldoldoldoldoldoldoldol"
+	const newID = "newnewnewnewnewnewnewne"
+	message := "subject\n\ngx: https://gx.run/r/" + oldID + "\n\ngx-revision: " + newID + "\n"
+	got := ParseRevisionIDsFromMessage(message)
+	if len(got) != 2 {
+		t.Fatalf("ParseRevisionIDsFromMessage() = %v, want both ids", got)
+	}
+	seen := map[string]bool{got[0]: true, got[1]: true}
+	if !seen[oldID] || !seen[newID] {
+		t.Fatalf("ParseRevisionIDsFromMessage() = %v, want %s and %s", got, oldID, newID)
+	}
+}
