@@ -105,7 +105,6 @@ for AI code review and generated pull request summaries. You work in plain Git.
 
 ```bash
 curl -fsSL https://download.gx.run/install.sh | sh
-gx auth login
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
 
@@ -145,7 +144,7 @@ working. Local data remains in `~/.gx`.
 
 ## Pages
 
-- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx auth`, `gx doctor`
+- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx doctor`
 - [MCP](/docs/mcp) — connect `gx_review` to Claude Code, Cursor, and Codex
 - [Pull Requests](/docs/pull-requests) — generated PR summaries and `@gx` chat on GitHub
 
@@ -163,7 +162,6 @@ better context for review.
 gx init         # set up hooks in a repo (run once)
 gx review       # AI review and pre-ship verdict for the current change (alias: gxr)
 gx enhance      # the single highest-value fix, written for your coding model
-gx auth         # sign in to gx Cloud
 gx doctor       # diagnose capture, hooks, and publishing
 gx version      # print the version
 ```
@@ -399,15 +397,6 @@ Output is plain text on stdout, so it pipes. Exit status is always `0` — gatin
 is `gx review`'s job. When the review finds nothing to fix, `gx enhance` says so
 on stderr and stdout stays empty.
 
-## gx auth
-
-```bash
-gx auth login
-gx auth status
-gx auth logout
-```
-
-Signs the CLI into gx Cloud through GitHub.
 
 ## gx doctor
 
@@ -447,7 +436,6 @@ CLI, so repo state stays on your machine. It exposes one tool: `gx_review`.
 
 ```bash
 curl -fsSL https://download.gx.run/install.sh | sh
-gx auth login
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
 ```
 
@@ -532,7 +520,7 @@ Default flow:
 - Run `git commit -m "..."` to save. A gx hook records the commit as a reviewable revision.
 - Run plain `git push` to publish. The gx pre-push hook captures the session and publishes code changes, sessions, and gx metadata to gx Cloud automatically — do not run `gx push` or `gx capture push` yourself; they bypass the hook.
 - Open PRs with `gh pr create` (or the GitHub UI). Do not seed a `## Summary` in the PR body — leave human notes only; gx Cloud appends the rich summary below once the PR exists.
-- To amend, use `git commit --amend` and preserve the gx revision trailer in the message.
+- To amend, use `git commit --amend` and preserve the `gx-revision:` trailer in the message.
 
 For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.
 ```

@@ -11,7 +11,26 @@ const (
 	PlaceholderDescription      = "(no description set)"
 	PendingRemainderDescription = "gx: pending remainder"
 	// RevisionTrailerFormat is the gx identity trailer line template.
-	RevisionTrailerFormat = "gx: https://gx.run/r/%s"
+	//
+	// This used to be a URL: "gx: https://gx.run/r/<id>". The page it named
+	// went away with the rest of the site, which left every commit gx had ever
+	// stamped ending in a dead link.
+	//
+	// The trailer itself cannot go, because it is the index. Resolving a
+	// revision ID to a commit is `git log --grep=<trailer>`
+	// (gitChangeByRevisionID), recovery is the same search (findCommitByRevisionID),
+	// and "which revisions are in this range" parses the ids back out of the
+	// messages (ParseRevisionIDsFromMessage). Remove the line and a revision
+	// stops being findable at all, which is a worse break than a stale link.
+	// So the marker stays and the URL goes: it carries the same information and
+	// promises nothing.
+	RevisionTrailerFormat = "gx-revision: %s"
+
+	// LegacyRevisionTrailerPrefix is the URL form this used to stamp. It is
+	// still parsed, so history written before this change keeps resolving:
+	// without it every commit already in a repository would stop being
+	// recognised as carrying a gx revision the day the format changed.
+	LegacyRevisionTrailerPrefix = "gx: https://gx.run/r/"
 )
 
 var (

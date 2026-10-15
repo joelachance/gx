@@ -33,7 +33,7 @@ import (
 // sessions attached to it — if it carries this trailer, so a harness that got
 // the format wrong would build repositories in which every session assertion
 // silently passes vacuously.
-const RevisionTrailerFormat = "gx: https://gx.run/r/%s"
+const RevisionTrailerFormat = "gx-revision: %s"
 
 // World is one isolated gx installation: a GX_HOME nothing else writes to and a
 // home directory to hang agent transcripts off.

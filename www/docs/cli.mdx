@@ -13,16 +13,21 @@ better context for review.
 gx init         # set up hooks in a repo (run once)
 gx review       # AI review and pre-ship verdict for the current change (alias: gxr)
 gx enhance      # the single highest-value fix, written for your coding model
-gx auth         # sign in to gx Cloud
 gx doctor       # diagnose capture, hooks, and publishing
 gx version      # print the version
 ```
 
-`gx review` and `gx enhance` call a model, so they need an API key:
+`gx review` and `gx enhance` call a model, so they need an API key. There is
+no gx account: the key is yours, it goes straight to the provider, and nothing
+else is contacted.
 
 ```bash
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
+
+`gx review` will also post its comment on the pull request if it can find a
+GitHub token -- `GH_TOKEN`, `GITHUB_TOKEN`, or the `gh` CLI's own login. None
+of that is required; `--no-comment` skips it.
 
 ## gx init
 
@@ -248,16 +253,6 @@ to one item and rewritten for a model rather than a person.
 Output is plain text on stdout, so it pipes. Exit status is always `0` — gating
 is `gx review`'s job. When the review finds nothing to fix, `gx enhance` says so
 on stderr and stdout stays empty.
-
-## gx auth
-
-```bash
-gx auth login
-gx auth status
-gx auth logout
-```
-
-Signs the CLI into gx Cloud through GitHub.
 
 ## gx doctor
 
