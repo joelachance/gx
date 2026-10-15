@@ -1,11 +1,26 @@
-# @satoricorp/gx — the gx MCP server
+# gx-mcp — the gx MCP server
 
 `gx-mcp` exposes `gx_review` to coding agents over stdio. It shells out to the
 local `gx` CLI and runs entirely on your machine with your own model key.
 
-Install gx and `gx-mcp` from source or a GitHub release, then run `gx init` in a
+```bash
+curl -fsSL https://download.gx.run/install.sh | sh
+```
+
+That installs both `gx` and `gx-mcp` into `~/.local/bin`. Then run `gx init` in a
 repository; it registers this server with Claude Code, Cursor and Codex when
-they are installed. Put `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the server
+they are installed. To wire it up by hand, any MCP client takes:
+
+```json
+{
+  "mcpServers": {
+    "gx": {
+      "command": "/Users/you/.local/bin/gx-mcp",
+      "env": { "ANTHROPIC_API_KEY": "sk-ant-..." }
+    }
+  }
+}
+``` Put `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the server
 config's `env` block: an MCP server inherits its host application's
 environment, not your shell's. `GX_BINARY` points it at a specific `gx`.
 

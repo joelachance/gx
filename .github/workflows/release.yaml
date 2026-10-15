@@ -1,8 +1,18 @@
 name: Release CLI
 
-# Builds the gx CLI + gx-mcp for darwin/linux and attaches the archives, with
-# their checksums, to the GitHub release for a v* tag. There is no download
-# site: a release is these assets, and everyone else builds from source.
+# Builds the gx CLI + gx-mcp for darwin/linux, publishes them to the Cloudflare
+# R2 bucket behind download.gx.run alongside install.sh and a manifest, and
+# attaches the same archives to the GitHub release on v* tags.
+#
+# R2 replaced S3 + CloudFront. What went away with CloudFront is the invalidation
+# call: a cached object there keeps its old body until told otherwise, so every
+# upload needed an explicit purge. R2 serves each object with the Cache-Control
+# stored on it, so the mutable keys below carry a short max-age and the edge
+# converges on its own. The whole thing sits inside the free tier: 10 GB stored,
+# no egress, so hosting a release costs nothing however many people install it.
+#
+# GitHub Releases still carries the same archives. It is where people look, and
+# it costs nothing.
 
 on:
   push:
@@ -36,6 +46,9 @@ jobs:
         with:
           bun-version: "1.3.4"
 
+      - name: Install tools
+        run: npm install -g wrangler@4
+
       - name: Resolve version
         id: version
         shell: bash
@@ -51,11 +64,22 @@ jobs:
       - name: Build CLI packages
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          # Derived from the one repository variable the publish step also
+          # reads. These were once two independent copies of the host, so a
+          # manifest could be built for one domain and published to another with
+          # nothing noticing until a user's install 404'd.
+          GX_DOWNLOAD_BASE_URL: https://${{ vars.GX_DOWNLOAD_HOST }}
         run: |
+          set -euo pipefail
+          test -n "$GX_DOWNLOAD_BASE_URL" && test "$GX_DOWNLOAD_BASE_URL" != "https://" || {
+            echo "vars.GX_DOWNLOAD_HOST is unset; the manifest would advertise no host." >&2
+            exit 1
+          }
           GOOS=darwin GOARCH=arm64 BUN_TARGET=bun-darwin-arm64 scripts/package-cli.sh
           GOOS=darwin GOARCH=amd64 BUN_TARGET=bun-darwin-x64 scripts/package-cli.sh
           GOOS=linux GOARCH=arm64 BUN_TARGET=bun-linux-arm64 scripts/package-cli.sh
           GOOS=linux GOARCH=amd64 BUN_TARGET=bun-linux-x64 scripts/package-cli.sh
+          scripts/render-cli-manifest.sh dist/cli
 
       - name: Verify artifacts
         run: |
@@ -63,6 +87,113 @@ jobs:
             test -f "dist/cli/gx_${{ steps.version.outputs.version }}_${platform}.tar.gz"
             test -f "dist/cli/gx_${{ steps.version.outputs.version }}_${platform}.tar.gz.sha256"
           done
+          test -f dist/cli/manifest.json
+          test -f scripts/install.sh
+
+      - name: Publish downloads to R2
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GX_DOWNLOAD_HOST: ${{ vars.GX_DOWNLOAD_HOST }}
+          GX_DOWNLOAD_BUCKET: ${{ vars.GX_DOWNLOAD_BUCKET }}
+          # wrangler reads these from the environment. An R2 API token is scoped
+          # to one bucket's Objects Read/Write, so this is not account-wide.
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Hard-fail rather than skip. Everything above runs entirely locally,
+          # so a release with R2 unconfigured produced a green check, a GitHub
+          # release, and no installable download -- the exact shape of "it ran,
+          # and nothing was published". Name every missing variable.
+          missing=()
+          [[ -n "$GX_DOWNLOAD_BUCKET"    ]] || missing+=(vars.GX_DOWNLOAD_BUCKET)
+          [[ -n "$GX_DOWNLOAD_HOST"      ]] || missing+=(vars.GX_DOWNLOAD_HOST)
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || missing+=(secrets.CLOUDFLARE_ACCOUNT_ID)
+          [[ -n "$CLOUDFLARE_API_TOKEN"  ]] || missing+=(secrets.CLOUDFLARE_API_TOKEN)
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'R2 publish is not configured: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          immutable="public, max-age=31536000, immutable"
+          # Short, not no-cache: these keys change only on release, and R2
+          # serves each object with the Cache-Control stored on it, so the edge
+          # picks up a new manifest within this window on its own.
+          mutable="public, max-age=300"
+
+          put() { # put <key> <file> <content-type> <cache-control>
+            wrangler r2 object put "$GX_DOWNLOAD_BUCKET/$1" \
+              --file "$2" --content-type "$3" --cache-control "$4" --remote
+          }
+
+          # Order is load-bearing, which is why this is not a loop over dist/.
+          # Versioned archives first, so nothing points at a release whose files
+          # have not landed; the manifest LAST, because it is what install.sh
+          # reads to decide what to download. Published before its own targets
+          # exist, it advertises a release that 404s.
+          for archive in dist/cli/gx_"$VERSION"_*.tar.gz; do
+            base="$(basename "$archive")"
+            test -f "$archive.sha256" || {
+              echo "missing checksum for $archive" >&2
+              exit 1
+            }
+            put "cli/releases/$GITHUB_SHA/$base" "$archive" application/gzip "$immutable"
+            put "cli/releases/$GITHUB_SHA/$base.sha256" "$archive.sha256" text/plain "$immutable"
+          done
+
+          for archive in dist/cli/gx_"$VERSION"_*.tar.gz; do
+            base="$(basename "$archive")"
+            rest="${base#gx_${VERSION}_}"
+            platform="${rest%.tar.gz}"
+            goos="${platform%_*}"
+            goarch="${platform##*_}"
+            latest="gx_${goos}_${goarch}.tar.gz"
+            put "cli/latest/$latest" "$archive" application/gzip "$mutable"
+            put "cli/latest/$latest.sha256" "$archive.sha256" text/plain "$mutable"
+          done
+
+          put install.sh scripts/install.sh text/x-shellscript "$mutable"
+          printf 'gx download not found\n' > 404.txt
+          put 404.txt 404.txt text/plain "$mutable"
+          put cli/manifest.json dist/cli/manifest.json application/json "$mutable"
+
+          echo "Published to https://$GX_DOWNLOAD_HOST"
+
+      - name: Verify the published install path
+        shell: bash
+        env:
+          GX_DOWNLOAD_HOST: ${{ vars.GX_DOWNLOAD_HOST }}
+        run: |
+          set -euo pipefail
+          host="https://$GX_DOWNLOAD_HOST"
+
+          # The install path is `curl | sh`, which nothing above executes. A
+          # manifest that parses but names a platform nobody can fetch still
+          # breaks every first-time install, so ask the bucket what it actually
+          # serves rather than what this job intended to put there.
+          install_sh=""
+          for attempt in 1 2 3 4 5 6; do
+            if install_sh="$(curl -fsSL "$host/install.sh" 2>/dev/null)"; then
+              break
+            fi
+            echo "attempt $attempt: $host/install.sh not served yet"
+            sleep 10
+          done
+          test -n "$install_sh" || { echo "$host/install.sh never became available" >&2; exit 1; }
+          printf '%s' "$install_sh" | sh -n -
+
+          manifest="$(curl -fsSL "$host/cli/manifest.json")"
+          url="$(printf '%s' "$manifest" | node -e '
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const m=JSON.parse(s);
+              const k=process.argv[1];
+              if(!m.assets||!m.assets[k]){console.error("manifest has no asset for "+k);process.exit(1);}
+              process.stdout.write(m.assets[k].url);
+            })' "darwin/arm64")"
+          curl -fsSI "$url" >/dev/null
+          curl -fsSI "$url.sha256" >/dev/null
+          echo "install path verified: $url"
 
       - name: Publish GitHub release assets
         if: ${{ github.ref_type == 'tag' }}

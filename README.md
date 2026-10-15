@@ -14,7 +14,16 @@ are the ones you give it a key for.
 
 ## Install
 
-Build from source (needs Go, at the version in `go.mod`):
+```bash
+curl -fsSL https://download.gx.run/install.sh | sh
+```
+
+That installs `gx`, the `gx-mcp` MCP server, and shell completions into
+`~/.local/bin`, and verifies the archive against its published checksum first.
+Downloads are served from Cloudflare R2; GitHub Releases carries the same
+archives if you would rather fetch them by hand.
+
+Build from source instead (needs Go, at the version in `go.mod`):
 
 ```bash
 git clone https://github.com/satoricorp/gx.git
@@ -22,9 +31,9 @@ cd gx
 just install          # or: go build -o ~/.local/bin/gx ./cmd/gx
 ```
 
-Or download a release from
-[GitHub Releases](https://github.com/satoricorp/gx/releases). Each archive
-holds `bin/gx` and the `bin/gx-mcp` MCP server:
+Or take an archive from
+[GitHub Releases](https://github.com/satoricorp/gx/releases). Each holds
+`bin/gx` and the `bin/gx-mcp` MCP server:
 
 ```bash
 tar -xzf gx_<version>_<os>_<arch>.tar.gz
@@ -33,7 +42,7 @@ install -m 755 gx/bin/gx-mcp ~/.local/bin/gx-mcp
 ```
 
 gx's git hooks look for the binary at `~/.local/bin/gx`, then on `PATH`.
-Upgrade the same way.
+Upgrade the same way, or `gx update` if your build has a download host.
 
 ## Get started
 

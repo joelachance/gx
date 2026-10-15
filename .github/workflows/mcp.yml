@@ -1,19 +1,16 @@
 name: mcp
 
-# Tests the MCP package on pushes and PRs, and publishes @satoricorp/gx
-# to npm when a tag like mcp-v0.1.0 is pushed (the tag must match
-# mcp/package.json's version) or on manual dispatch. Publishing uses npm
-# Trusted Publishing (OIDC) — no token secret. One-time setup: publish 0.1.0
-# once locally (`just mcp-publish`), then on npmjs.com under the package's
-# Settings add a trusted publisher: GitHub Actions, owner satoricorp, repo
-# gx, workflow mcp.yml.
+# Tests the MCP package on pushes and PRs.
+#
+# There is no publish job and no registry. gx-mcp is compiled by
+# scripts/package-cli.sh and ships inside the CLI tarball that install.sh
+# installs, and `gx init` registers it by absolute path — so nothing in gx
+# needs a package registry to resolve the MCP server.
 
 on:
   push:
     branches: [main]
-    tags: ["mcp-v*"]
-  pull_request:
-  workflow_dispatch:
+    pull_request:
 
 jobs:
   test:
@@ -28,34 +25,3 @@ jobs:
       - run: bun run typecheck
       - run: bun run build:xmcp
       - run: bun test
-
-  publish:
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    defaults:
-      run:
-        working-directory: mcp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: "https://registry.npmjs.org"
-      # Trusted Publishing needs npm >= 11.5.1; node 22 bundles an older npm.
-      - run: npm install -g npm@latest
-      - name: Check tag matches package version
-        if: github.ref_type == 'tag'
-        run: |
-          tag="${GITHUB_REF_NAME#mcp-v}"
-          ver="$(node -p "require('./package.json').version")"
-          if [ "$tag" != "$ver" ]; then
-            echo "tag mcp-v$tag does not match package.json version $ver" >&2
-            exit 1
-          fi
-      - run: bun install --frozen-lockfile
-      - run: npm publish
