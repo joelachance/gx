@@ -1,0 +1,680 @@
+# How it works
+
+gx adds a context layer around your existing Git workflow. It captures what
+happened during coding sessions, attaches that context to ordinary Git commits,
+and uses it for two review surfaces: `gx review` locally and generated PR
+summaries on GitHub.
+
+## The problem
+
+Git was built for humans typing commits one at a time. A commit stores a
+snapshot and a short message, and for human-paced work that is usually enough.
+
+Agent-written code breaks two of Git's assumptions:
+
+1. **The context that explains a change never makes it into the repo.** The
+   prompt that asked for the change, the commands the agent ran, the tests it
+   executed, the dead ends it backed out of — all of that lives in a session
+   transcript that is gone by review time. The commit message is whatever one
+   line survived.
+2. **Review is now the bottleneck.** The cost of generating code is dropping
+   toward zero, but teams still review line by line. When a pull request is one
+   large undifferentiated diff with a thin message, the reviewer reconstructs
+   intent from scratch.
+
+## What gx captures
+
+- **Sessions** — transcripts from Claude Code, Codex, and Cursor. The pre-push
+  hook captures them into `~/.gx/gx.db` and publishes them alongside
+  the code they produced.
+- **Revisions** — each plain `git commit` is recorded as one reviewable unit,
+  down to individual hunks. gx links each revision to the session that
+  produced it by matching the changed hunks against captured session activity —
+  nothing is attached by hand.
+
+## How gx review works
+
+`gx review` reads the current change — a dirty working tree, or the branch's
+commits against its base — and reviews it with two independent AI reviewers
+plus repo context: the indexed codebase, captured sessions, review history, and
+your repo's review policy. A judge model then verifies and dedupes the
+findings. Alongside them it runs what the project already has — the compiler,
+the linter, the test suite, a secret scan over added lines, and the dependency
+audits when a manifest moved — and reports those results as evidence rather
+than as a separate command.
+
+Findings land in two lanes, and the split is what makes the verdict worth
+trusting. A finding is **blocking** only when both reviewers raised it
+independently *and* the verification model confirmed it; anything one model
+raised alone is **advisory** — reported, but it will not stop you. Agreement
+between independent readers is the strongest confidence signal a panel
+produces, so gx spends it on the only decision that matters: ship or don't.
+
+The run ends in that verdict — `SHIP`, `NO-SHIP`, `DEGRADED` when the panel
+could not fully run, or `NOTHING-TO-REVIEW`. Because a pass is a claim about
+code that was actually inspected, the last two cases are failures rather than
+quiet zeros.
+
+The command touches no Git state — no hooks, no commits, no index mutation, and
+no `~/.gx` on a machine that never ran `gx init` — so it runs anywhere,
+including CI (the exit code gates by default) and checkouts you do not own. The
+one file it writes is the report itself, saved to `review/` and added to your
+local Git excludes so it never shows up as a change. See the
+[CLI reference](/docs/cli#gx-review).
+
+## How PR summaries work
+
+On `git push`, the pre-push hook uploads a review bundle: the revisions, their
+hunks, and the linked sessions. When a pull request exists, gx Cloud
+generates a summary from that bundle plus the indexed codebase, and writes it
+into the PR description below your own text.
+
+The summary opens with a verdict — 🟢 **Quick scan**, 🟡 **Careful pass**, or
+🔴 **Deep review** — judged by blast radius: what the change can break,
+including code the diff never touches. Notable Changes each carry an
+`Attribution:` line naming the concrete source that informed them. See
+[Pull Requests](/docs/pull-requests).
+
+## Why this speeds up review
+
+- The verdict tells a reviewer how much attention a PR needs before they open
+  the diff. A two-file rename that breaks downstream consumers gets 🔴; a
+  contained refactor gets 🟢.
+- Notable Changes point at the hunks that decide correctness, so the mechanical
+  rest can be skimmed instead of read line by line.
+- Session provenance answers "why is this here?" without a round-trip to the
+  author — the prompt, commands, and tests are part of the review context.
+- `gx review` catches findings before the PR exists, when they are cheapest to
+  fix.
+
+## Everything is still just Git
+
+The hooks publish normal Git branches and commits; sessions and metadata go to
+gx Cloud as a review bundle. Nothing about your repository becomes
+gx-specific — if you stop using gx tomorrow, your branches and
+commits remain ordinary Git.
+
+---
+
+# Getting Started
+
+gx records which agent session produced each Git commit and uses that context
+for AI code review and generated pull request summaries. You work in plain Git.
+
+## Install
+
+```bash
+curl -fsSL https://download.gx.run/install.sh | sh
+gx auth login
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
+```
+
+This installs bash/zsh completions and the `gxr` shorthand for `gx review`.
+Review runs a model on your machine, so it needs an API key; the hooks, capture,
+and PR summaries do not.
+
+## Basic Usage
+
+The everyday flow is two gx commands: `gx init` once per repository to install
+the Git hooks, and `gx review` before you ship. Otherwise, use Git as normal —
+the hooks record revisions, capture sessions, and publish on push without any
+gx-specific commands.
+
+```bash
+cd your-repo
+gx init                                # once per repo: installs the Git hooks
+git add src/retry.js
+git commit -m "add retry helper"       # hook records the revision
+gx review                              # AI review and ship / no-ship verdict
+git push                               # hook captures the session and publishes
+gh pr create                           # gx Cloud adds the summary to the PR
+```
+
+Summaries require the [gx GitHub App](https://github.com/apps/satoricorp-gx)
+on the account or org that owns the repo.
+
+## Uninstall
+
+```bash
+rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gx-mcp
+rm -f ~/.local/share/bash-completion/completions/gx ~/.zfunc/_gx
+```
+
+Installed Git hooks exit silently when the binary is absent, so plain Git keeps
+working. Local data remains in `~/.gx`.
+
+## Pages
+
+- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx auth`, `gx doctor`
+- [MCP](/docs/mcp) — connect `gx_review` to Claude Code, Cursor, and Codex
+- [Pull Requests](/docs/pull-requests) — generated PR summaries and `@gx` chat on GitHub
+
+---
+
+# CLI
+
+Initialize any repository with `gx init`. This installs git hooks that capture
+your session context and pairs it with your code changes, giving gx
+better context for review.
+
+## gx CLI Overview
+
+```bash
+gx init         # set up hooks in a repo (run once)
+gx review       # AI review and pre-ship verdict for the current change (alias: gxr)
+gx enhance      # the single highest-value fix, written for your coding model
+gx auth         # sign in to gx Cloud
+gx doctor       # diagnose capture, hooks, and publishing
+gx version      # print the version
+```
+
+`gx review` and `gx enhance` call a model, so they need an API key:
+
+```bash
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
+```
+
+## gx init
+
+```bash
+gx init
+```
+
+`gx init` installs the Git hooks and registers the MCP server. Run it once per
+repository.
+
+| Flag | Meaning |
+| --- | --- |
+| `--name <name>` | user name to store in gx config (defaults to Git identity) |
+| `--email <email>` | user email to store in gx config |
+| `-y`, `--yes` | accept defaults and suppress prompts — use in scripts and agent sandboxes |
+| `--global` | install the hooks machine-wide instead of for one repository |
+
+### Global hooks
+
+```bash
+gx init --global
+```
+
+Installs the hooks once for every repository. The scripts chain to each
+repository's own hooks of the same name, so husky, lefthook, and hand-written
+hooks keep working. If a global hooks path is already set to something else,
+`gx init --global` stops rather than overwriting it.
+
+Opt a single repository out, from inside it:
+
+```bash
+git config gx.enabled false
+```
+
+Undo the machine-wide install:
+
+```bash
+git config --global --unset core.hooksPath
+```
+
+## gx review
+
+```bash
+gx review                                     # alias: gxr
+gx review "make checkout survive gateway blips"
+gx review --scope security                    # focused pass
+gx review --focus src/auth --deep             # deep review of one directory
+gx review --base origin/main --md             # markdown report, e.g. for a PR comment
+```
+
+Reviews the current change and ends in a ship / no-ship verdict. Two
+independent reviewers read the change against your indexed codebase, captured
+sessions, review history, and your repo's review policy; a verification model
+then confirms and dedupes what they found. This can be run in the terminal or
+via [MCP](/docs/mcp).
+
+### Intent
+
+The optional positional argument is one sentence saying what the change was
+meant to do, in your words — `"fix the auth timeout"`. It is not a question and
+not a filter. The reviewer holds the diff against it, so a change that quietly
+does more than the intent says is itself a finding. With no intent, gx derives
+one from the branch name and recent commit subjects, and says so in the report.
+
+### Lanes
+
+Every finding lands in one of two lanes:
+
+| Lane | Meaning |
+| --- | --- |
+| `BLOCKING` | stops the change — this is what exits non-zero |
+| `ADVISORY` | reported, and does not fail the gate |
+
+A finding blocks only when **both** reviewers raised it and the verification
+model confirmed it. One model's opinion — however strongly worded — is demoted
+to advisory.
+
+| Flag | Meaning |
+| --- | --- |
+| `[intent]` | optional positional sentence stating what the change is meant to do |
+| `--base <ref>` | review the commit range `<ref>...HEAD` instead of the working tree |
+| `--scope <name>` | focused lens: `architecture`, `security`, `performance`, `onboarding`, `docs`, `dependencies`, `testing`, `maintainability` |
+| `--focus <path>` | limit the review to files under a path prefix |
+| `--repo` | review the whole repository rather than the current change; wins over `--base` |
+| `--deep` | full-spectrum review with more local and indexed context |
+| `--fast` | optimize for wall clock: one reviewer, no verification pass, no code examples in findings |
+| `--verbose` | include repo facts, docs, and changed files |
+| `--json` | print the report as JSON |
+| `--md` | print the report as markdown — the PR-comment body |
+| `--max-findings <n>` | cap how many recommendations the review reports |
+| `--fail-on <level>` | exit non-zero when findings at or above this level survive (default `blocking`) |
+| `--no-comment` | skip posting the PR review comment, but still record review history |
+| `--no-publish` | skip both the PR review comment and the review history |
+| `--client <name>` | label the surface invoking this review: `cli`, `mcp`, `skill`, `slash-gx` |
+
+### What gets reviewed
+
+1. `--repo` when given — the whole repository
+2. `--base <ref>` when given — the range `<ref>...HEAD`
+3. Otherwise a dirty working tree
+4. Otherwise the branch's commits against an auto-detected base (`main`,
+   `master`, `origin/main`, `origin/master`), or the last commit when HEAD is
+   the base branch
+
+If nothing was found, `gx review` says so. "Nothing was reviewed" is its own
+outcome and never counts as a clean pass.
+
+### Checks that are not the model
+
+Alongside the reviewers, `gx review` runs whatever the project already has, and
+reports the results as evidence:
+
+| Check | When it runs |
+| --- | --- |
+| `go test`, `go vet`, `tsc`, `eslint`, `ruff`, `mypy`, `pytest`, `cargo check`, `dart analyze`, `flutter analyze`, `dotnet build` | when the change touches that ecosystem |
+| secret scan over added lines (`security.secret-in-added-lines`) | every review — added lines only, since a removed secret is the fix, not the leak |
+| dependency audits: `govulncheck`, `npm audit`, `pip-audit` | when the change touches a manifest or lockfile, or under `--repo` |
+
+A missing tool is never a failure — an auditor that isn't installed is reported
+as skipped evidence. Set `GX_REVIEW_STATIC_TOOLS=0` to turn the whole set off.
+
+### The report
+
+Under a terminal the report opens as an accordion you walk section by section:
+the two lanes, a **FIX PLAN**, and the story of the change. Piped or in CI it
+prints in full instead, and the exit code is the same either way.
+
+The last two lines are the machine seam — `Verdict:` and `Next:`:
+
+| Verdict | Meaning |
+| --- | --- |
+| `SHIP` | no blocking finding |
+| `NO-SHIP` | at least one blocking finding survived |
+| `DEGRADED` | no blocking finding, but the panel did not fully run — a pass would be unearned |
+| `NOTHING-TO-REVIEW` | no change was found |
+
+Every run that inspected code also saves its full JSON report to
+`review/review-findings-<timestamp>.json`, and adds `/review/` to
+`.git/info/exclude` so the saved reports never dirty `git status`.
+
+### As a CI gate
+
+The gate is on by default — no opt-in flag needed:
+
+```bash
+gx review --base origin/main --no-publish
+```
+
+`--fail-on` sets the threshold:
+
+| Level | Meaning |
+| --- | --- |
+| `blocking` | **default** — only findings in the blocking lane (both reviewers plus the verifier) |
+| `strong` | findings at `strong` strength or above, whatever the lane |
+| `worth-exploring` | findings at `worth-exploring` strength or above |
+| `speculative` | findings at `speculative` strength or above |
+| `any` | anything the review raised |
+| `none` | turn the gate off |
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | reviewed, and nothing at or above the threshold survived |
+| `3` | findings at or above the threshold survived |
+| `4` | nothing was reviewed — a gate should not pass without inspecting code |
+| `5` | degraded — the review ran incomplete, so a pass would be unearned |
+
+Pair with `--no-publish` so CI never posts PR comments, and `--json` to parse
+findings yourself.
+
+### Swapping the model panel
+
+`GX_REVIEW_MODELS=<preset>` swaps reviewers and judge together:
+
+```bash
+GX_REVIEW_MODELS=budget gx review
+```
+
+| Preset | Panel |
+| --- | --- |
+| `default` | Haiku + Sonnet 4.6 reviewing, Haiku judging |
+| `budget` | Haiku + GLM 5 reviewing, Nemotron 3 Super judging |
+| `luna` | GPT-5.6 Luna end to end |
+| `glm` | GLM 5 end to end |
+
+A single slot's own environment variable still wins over the preset.
+
+### Read-only
+
+`gx review` changes no Git state — no commits, no index mutation, no hooks, and
+no `~/.gx` on a machine that never ran `gx init` (which is required for PR
+summaries and chat, not for review). The saved report above is the only file it
+writes, and it is excluded from Git.
+
+## gx enhance
+
+```bash
+gx enhance                            # alias: gx gxe
+gx enhance "fix the auth timeout"
+gx enhance | pbcopy
+gx enhance | claude -p "apply this"
+```
+
+Prints the single change most worth making right now, written as a prompt you
+hand to a coding model: the problem, the code it lives in, the change to make,
+and how to know it worked.
+
+It runs the same review as `gx review` and reports the top of that review's fix
+plan — blocking findings first, then the judge's ranking — so the two never
+disagree about what matters most. `gx enhance` is `gx review`'s answer, narrowed
+to one item and rewritten for a model rather than a person.
+
+| Flag | Meaning |
+| --- | --- |
+| `[intent]` | optional positional sentence stating what the change is meant to do |
+| `--base <ref>` | review the commit range `<ref>...HEAD` instead of the working tree |
+| `--focus <path>` | limit the review to files under a path prefix |
+| `--repo` | review the whole repository rather than the current change |
+| `--deep` | full-spectrum review with more local and indexed context |
+| `--fast` | optimize for wall clock: one reviewer, no verification pass |
+
+Output is plain text on stdout, so it pipes. Exit status is always `0` — gating
+is `gx review`'s job. When the review finds nothing to fix, `gx enhance` says so
+on stderr and stdout stays empty.
+
+## gx auth
+
+```bash
+gx auth login
+gx auth status
+gx auth logout
+```
+
+Signs the CLI into gx Cloud through GitHub.
+
+## gx doctor
+
+```bash
+gx doctor            # diagnose capture, hooks, auth, and the publish queue
+gx doctor --fix      # apply safe repairs
+gx doctor --json     # machine-readable report
+gx doctor --report   # send this diagnosis and recent logs to support
+```
+
+## gx version
+
+```bash
+gx version
+gx version --json
+```
+
+## Shortcuts
+
+The installer links `gxr` to the same binary, so a review is one word:
+
+```bash
+gxr   # gx review
+```
+
+`gx gxr` and `gx gxe` work as subcommand aliases for `gx review` and
+`gx enhance`.
+
+---
+
+# MCP
+
+The MCP server ships with the CLI as a local stdio binary. It shells out to the
+CLI, so repo state stays on your machine. It exposes one tool: `gx_review`.
+
+## Install
+
+```bash
+curl -fsSL https://download.gx.run/install.sh | sh
+gx auth login
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
+```
+
+## Register with your agent
+
+`gx init` registers the server automatically with agent CLIs found on your
+`PATH` (Claude Code, Cursor, Codex) and reports something like
+`MCP ok: Claude Code, Cursor`.
+
+To register with every MCP client on your machine in one command, use
+[`add-mcp`](https://www.npmjs.com/package/add-mcp):
+
+```bash
+npx add-mcp @satoricorp/gx --name gx -g -y
+```
+
+| Flag | Effect |
+| --- | --- |
+| `-g` | install user-level so gx is available in every project; omit for project-level config |
+| `-y` | non-interactive (skip prompts) |
+| `-a <agent>` | target a specific agent (repeatable), e.g. `-a cursor` |
+
+Most clients load MCP servers at startup — restart the client or open a new
+chat after registering.
+
+For clients neither path covers, the stdio shape is:
+
+```json
+{
+  "mcpServers": {
+    "gx": {
+      "command": "npx",
+      "args": ["-y", "@satoricorp/gx"]
+    }
+  }
+}
+```
+
+The server finds the CLI in `~/.local/bin` or on `PATH`; set `GX_BINARY`
+to point somewhere else.
+
+## gx_review
+
+| Parameter | Type | Meaning |
+| --- | --- | --- |
+| `prompt` | string | optional intent, e.g. `"fix the auth timeout"` — passed as the positional argument, and the reviewer holds the diff against it |
+| `scope` | enum | focused lens: `architecture`, `security`, `performance`, `onboarding`, `docs`, `dependencies`, `testing`, `maintainability` |
+| `focus` | string | limit review to files under this path prefix |
+| `deep` | boolean | full-spectrum review with more local and indexed context |
+| `fast` | boolean | optimize for wall clock: one reviewer, no verification pass — for reviews someone is waiting on |
+| `verbose` | boolean | include repo facts, docs, and changed files |
+| `repo` | boolean | review the whole repository instead of the current change |
+| `cwd` | string | repository working directory (defaults to the MCP server process cwd) |
+
+Runs `gx review --no-comment --client mcp`, so an agent asking for review
+context never comments on a pull request — commenting stays a deliberate act of
+the CLI, where a human typed the command. The run itself still records to gx
+Cloud history, so MCP reviews count in per-surface usage; use the `gx review
+--no-publish` CLI flag to suppress that too.
+
+The tool is read-only and never initializes a repository. May run up to 5
+minutes. A no-ship verdict is a successful tool call, not an error — the verdict
+lives in the report's final `Verdict:` / `Next:` lines, with the blocking and
+advisory lanes and a **FIX PLAN** above them. See
+[the CLI reference](/docs/cli#gx-review) for what those mean.
+
+Saving and publishing are plain Git, not MCP calls: `git add` + `git commit`
+record the revision through the hooks, `git push` captures and publishes.
+
+## AGENTS.md instructions
+
+`gx init` offers to append these instructions to your repo's `AGENTS.md`. If you
+skipped that step, add them manually:
+
+```markdown
+# Agents
+
+Version control: plain Git. Once `gx init` installs the hooks, gx records and publishes automatically — there is no gx save verb.
+
+Default flow:
+- Run `git add` to stage the files for this revision.
+- Run `git commit -m "..."` to save. A gx hook records the commit as a reviewable revision.
+- Run plain `git push` to publish. The gx pre-push hook captures the session and publishes code changes, sessions, and gx metadata to gx Cloud automatically — do not run `gx push` or `gx capture push` yourself; they bypass the hook.
+- Open PRs with `gh pr create` (or the GitHub UI). Do not seed a `## Summary` in the PR body — leave human notes only; gx Cloud appends the rich summary below once the PR exists.
+- To amend, use `git commit --amend` and preserve the gx revision trailer in the message.
+
+For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.
+```
+
+---
+
+# Pull Requests
+
+gx writes a review summary into your pull request description and answers
+questions when you mention `@gx` in PR comments. See [Getting Started](/docs)
+for instructions.
+
+## PR summaries
+
+gx appends a summary to your pull request description, with links and
+attribution for the important changes.
+
+Section Descriptions:
+
+| Section | Content |
+| --- | --- |
+| Verdict line | 🟢 **Quick scan** (LOW) / 🟡 **Careful pass** (MEDIUM) / 🔴 **Deep review** (HIGH), plus a one-line triage reason. The label always matches the Blast Radius level |
+| Overview | What changed and why |
+| Blast Radius | severity with file/area/line counts and a risk note. Judged by what the change can break — including code the diff never touches — not by diff size |
+| Notable Changes | the changes a reviewer should look at first, each with an `Attribution:` line naming the concrete source: a codebase path, a captured agent session, a prior PR, or docs |
+
+Summaries are generated when the GitHub App sees `pull_request`
+`opened`/`synchronize` for a branch with published gx context, and after a
+publish when a PR already exists. Push again to force a refresh.
+
+## Chat with @gx
+
+Mention `@gx` in any PR comment:
+
+```text
+@gx which files should I review first?
+@gx explain the auth callback changes
+@gx what is the highest-risk change in this PR?
+@gx are there missing tests?
+```
+
+Any answer from `@gx` will cite its source (codebase, previous PRs, past
+sessions, etc). `@gx` can answer questions based on outcomes from sessions,
+giving your team full transparency into every coding session.
+
+### Retire a learned rule
+
+```text
+@gx skip rule never use var
+@gx do not enforce this migration naming rule
+```
+
+When a matching active rule exists, it is retired and the override recorded.
+Requires **write**, **maintain**, or **admin** permission on the repository.
+
+---
+
+# gx changelog: new features, updates, and fixes
+
+## August 16, 2026
+
+**`gx review` is the pre-ship verdict** — Two commands that both ended in a ship /
+no-ship verdict was one too many, so `gx gates` (briefly `gx constraints`) is gone
+and `gx review` is the single gate. The deterministic checks the gate owned moved
+into review rather than disappearing with it: the secret scan over added lines, the
+dependency audits (`govulncheck`, `npm audit`, `pip-audit`) when a manifest or
+lockfile moved, and `pytest` on Python projects — all three now run on the command
+that hooks and CI actually call. The `gxc`/`gxg` shorthands and the `gx_constraints`
+MCP tool retire with it; `gxr` is the shorthand, `gx_review` the tool.
+
+**Blocking and advisory lanes** — Findings now split by how much agreement is behind
+them. A finding blocks only when both reviewers raised it independently *and* the
+verification model confirmed it; one model's opinion is advisory and will not stop
+you. `--fail-on blocking` is the default, so the exit code gates without an opt-in
+flag, and `--fail-on none` turns it off.
+
+**Intent, not a prompt** — The positional argument is now one sentence saying what the
+change was meant to do — `gx review "fix the auth timeout"` — rather than a question or a
+filter. The reviewer holds the diff against it, so a change that quietly does more than
+its stated intent is itself a finding. Omit it and gx derives one from the branch name
+and recent commit subjects, and says so in the report.
+
+**`gx enhance`** — Prints the single highest-value fix in the current change as a
+prompt written for a coding model — the problem, the code, the change, and how to
+know it worked. It is `gx review`'s own fix plan narrowed to one item, so the two
+never disagree. Pipes cleanly: `gx enhance | claude -p "apply this"`.
+
+**Reviews survive the terminal** — Every run that inspected code saves its full JSON
+report to `review/review-findings-<timestamp>.json`, git-excluded automatically.
+`--md` prints the PR-comment shape, and `--fast` trades the second reviewer and the
+verification pass for wall clock when someone is waiting.
+
+## July 29, 2026
+
+**PR summary verdict labels** — The summary's triage line now states what the reader
+must do, not just a color: 🟢 **Quick scan** (LOW), 🟡 **Careful pass** (MEDIUM),
+🔴 **Deep review** (HIGH). The label is enforced server-side to always match the
+Blast Radius level, so a red summary can never read as permission to skim.
+
+**A new name** — The product is now **gx**. The CLI is `gx` (`gxr` for one-shot review,
+`gx-mcp` for agents). Install from `download.gx.run`; docs live at
+[gx.run/docs](/docs).
+
+## July 26, 2026
+
+**Plain Git is the whole workflow** — Capture and publishing are entirely hook-driven:
+`git commit` records a revision, `git push` captures the session and publishes. The
+porcelain that duplicated Git (`gx push`, `gx sync`, the background daemon, and the
+macOS menu-bar app) has been removed. If you have an older install, `gx init` cleans
+up the retired pieces.
+
+**PR summaries write to the description** — gx Cloud writes the rich summary
+into the pull request description below your own text, behind a gx-owned
+marker. Your notes survive every regeneration.
+
+**`gx review` is guaranteed read-only** — Review writes nothing: no repo state, no
+`.git/index` mutation, no `~/.gx` on machines that never ran `gx`, and no
+uploads when a gate fails. `--fail-on` turns a review into a CI gate with distinct
+exit codes for "findings survived" and "nothing was reviewed". See the
+[CLI reference](/docs/cli#gx-review).
+
+*Updated [August 16, 2026](#august-16-2026): review now saves its JSON report to
+`review/` (git-excluded, the one file it writes), gates on blocking findings by
+default, and exits 5 when the panel ran degraded.*
+
+**Two-model review panel** — `gx review` runs two independent Anthropic reviewers
+plus a judge that verifies and dedupes findings. When both reviewers flag the same
+issue independently, the report says so — the strongest confidence signal a panel
+produces.
+
+## July 2, 2026
+
+**Generated GitHub PR summaries** — After you publish with plain `git push` and open
+a PR, gx Cloud posts a generated review summary highlighting blast radius and
+high-impact review targets.
+
+**Code review history memory** — `gx review` pulls in indexed context from your past
+reviews and GitHub comment history, and attaches review policy context so findings
+stay consistent with how your team reviews code.
+
+**Prompted `gx review`** — Trigger `gx review` with a targeted prompt to focus the
+review on a specific concern instead of the full default sweep.
+
+*Updated [August 16, 2026](#august-16-2026): the positional argument is an intent, not
+a focusing prompt — use `--scope` and `--focus` to narrow a review.*

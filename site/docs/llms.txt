@@ -1,0 +1,12 @@
+# gx
+
+> gx records which agent session produced each Git commit and uses that context for AI code review and generated pull request summaries. You work in plain Git.
+
+## Docs
+
+- [How it works](/docs/how-it-works): What gx captures, how gx review and PR summaries use it, and why that makes review faster.
+- [Getting Started](/docs): Install gx, initialize a repository, and publish your first reviewed change.
+- [CLI](/docs/cli): CLI Reference with flags, examples, and exit codes.
+- [MCP](/docs/mcp): Connect the gx MCP server to Claude Code, Cursor, Codex, and other MCP clients.
+- [Pull Requests](/docs/pull-requests): Generated PR summaries in the pull request description, and @gx chat inside PR comments.
+- [gx changelog: new features, updates, and fixes](/docs/changelog/overview): Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes.

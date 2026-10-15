@@ -13,6 +13,14 @@ mcp/node_modules/
 mcp/xmcp-env.d.ts
 .gstack/
 
+# The site (site/) is a separate Next.js app inside this repository rather than
+# a second repo. Its build output and dependencies are its own; the generic
+# node_modules rule above already covers site/node_modules.
+site/.next/
+site/out/
+site/.source/
+site/tsconfig.tsbuildinfo
+
 # `gx review` writes its full JSON report here in whatever repository it runs
 # in. The command also adds this path to .git/info/exclude so it stays out of
 # the way in repositories it does not own — but that file is per-machine, so in

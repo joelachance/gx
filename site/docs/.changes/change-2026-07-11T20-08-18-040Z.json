@@ -1,0 +1,105 @@
+{
+  "id": "change-2026-07-11T20-08-18-040Z",
+  "tool": "topo",
+  "createdAt": "2026-07-11T20:08:18.040Z",
+  "mode": "init",
+  "userPrompt": "Migrate gx's existing Mintlify documentation into a new Topo/Fumadocs site at /docs.\n\nPreserve the product voice, structure, and factual content from the source docs below. Prefer the same information architecture (Overview, Get Started, How it works, gx usage/MCP, GitHub PRs, API) adapted to Fumadocs conventions. Do not invent features not present in the source. Product name is gx.\n\nSOURCE DOCS (mintlify-docs, formerly /docs):\n\nNAVIGATION (docs.json):\n{\n  \"$schema\": \"https://mintlify.com/docs.json\",\n  \"theme\": \"aspen\",\n  \"name\": \"gx\",\n  \"navigation\": {\n    \"groups\": [\n      {\n        \"group\": \"Overview\",\n        \"pages\": [\"index\", \"get-started/overview\", \"how-it-works/overview\"]\n      },\n      {\n        \"group\": \"Usage\",\n        \"pages\": [\"gx/overview\", \"gx/mcp\"]\n      },\n      {\n        \"group\": \"Pull Requests\",\n        \"pages\": [\"github/overview\"]\n      }\n    ]\n  }\n}\n\n===== FILE: index.mdx =====\ngx helps teams understand and review AI-written code without treating every pull request as an isolated diff.\n\nThe open-source `gx` CLI captures coding sessions, turns messy working-copy changes into ordered revisions and stacks, and publishes those stacks as normal Git branches and commits. The paid GitHub features add PR summaries and `@gx` chat inside GitHub pull requests.\n\n## Start here\n- Get started: install gx, sign in, and publish your first stack.\n- How it works: why gx stores more context than Git and why gx says stacks and revisions.\n- gx: CLI commands, shortcuts, and the MCP Setup path.\n- Pull Requests: PR Summaries, `@gx` chat, and paid GitHub review features.\n\n## Core workflow\n```bash\ngx generate\ngx status\ngx push\n```\nShortcuts: gxg (generate), gxs (status), gxr (review).\n\n## Product model\n- Session: captured coding context from an agent, editor, or shell.\n- Revision: one reviewable logical change, including the code diff and the context that explains how it was produced.\n- Stack: an ordered line of revisions that should be reviewed together.\n- Review bundle: the published payload that joins code changes, sessions, metadata, and review evidence.\n\ngx still outputs normal Git branches, commits, and pull requests. The gx terms describe the product model before it is exported to Git.\n\nA Git commit is a durable snapshot plus a short message. That is still useful, but it is often too thin for AI-generated work. An gx revision is the review unit. A Git branch is a pointer; an gx stack is the product shape of the work.\n\n===== FILE: get-started/overview.mdx =====\nStart with gx when you want coding agents to produce reviewable work instead of one large undifferentiated diff.\n\nThe usual path is: 1) Install gx 2) Sign in with GitHub 3) Initialize gx in a repository 4) Generate, inspect, and push a stack.\n\n## Install\nWindows is not supported yet.\n\n### macOS\nInstall the Mac app if you want the menu-bar app to manage local setup. The app installs or updates the CLI, installs gxg/gxs/gxr shortcuts, and shows local setup status.\n\n### Linux\n```bash\ncurl -fsSL https://download.gx.run/install.sh | sh\ngx version\n```\nCLI installer places gx, gxg, gxs, and gxr in ~/.local/bin.\n\n## Sign in\n```bash\ngx auth login\ngx auth status\n```\nWeb app and CLI sign-in linked through GitHub. Signed-in CLI devices visible in web app.\n\n## Initialize a repo\n```bash\ngx init\n```\n\n## Set API Keys\n```bash\nexport OPENAI_API_KEY=\"...\"\nexport ANTHROPIC_API_KEY=\"...\"\n```\nFor local stack/revision inference via CLI/MCP. Paid PR features use gx Cloud.\n\n## First stack\n```bash\ngx generate # gxg\ngx status   # gxs\ngx push\n```\ngxg groups work into reviewable revisions/stacks. gxs shows unstaged files, stacks, revisions, remote state. gx push exports to Git and gx Cloud.\n\n## Agent workflow\nPrefer MCP tools over asking agents to run CLI directly:\ngx sync → gx generate → gx status → gx push\n\n===== FILE: how-it-works/overview.mdx =====\nMany changes during a coding session are otherwise lost. Those details help teammates and agents understand intent. gx gives a stronger review system alongside Git history.\n\n## The problem\nGit was not built for LLMs. Session context can supplement PRs. Code review is becoming a bottleneck as codegen cost drops.\n\n## Benefits\ngx records session context to supplement git and PR context. Saves coding sessions and organizes work into hunks with descriptions. Shortens review time.\n\n## Stacks and revisions\nRevision ≈ editable commit. Stack ≈ branch with metadata. gx push still produces branches and commits for GitHub.\n\n## Replace git workflow\nInstead of git checkout/add/commit/push, use: gx generate (gxg), gx status (gxs), gx push. Prefer MCP for agents.\n\n===== FILE: gx/overview.mdx =====\ngx is the local open-source CLI. Adds quality/workflow layer; still produces ordinary Git branches/commits. Models work as reviewable revisions in ordered stacks with session context.\n\nCommands: gx init, gx generate, gx status, gx push, gx sync, gx review, gx add -m, gx edit, gx doctor, gx auth, gx version.\nShortcuts: gxg, gxs, gxr.\nAdvanced: gx report, gx capture sync, gx ops.\nModel credentials: OPENAI_API_KEY / ANTHROPIC_API_KEY for local inference.\n\n===== FILE: gx/mcp.mdx =====\ngx MCP server ships with CLI, shells out to local gx binary.\nInstall: curl install.sh, gx auth login. gx-mcp next to gx in ~/.local/bin.\n\nRegister:\n- Cursor: cursor mcp add gx -- env GX_BINARY=$HOME/.local/bin/gx $HOME/.local/bin/gx-mcp\n- Claude Code: claude mcp add gx -- env GX_BINARY=$HOME/.local/bin/gx $HOME/.local/bin/gx-mcp\n- Codex: codex mcp add gx --env GX_BINARY=$HOME/.local/bin/gx -- $HOME/.local/bin/gx-mcp\n\nTools: gx_sync, gx_generate, gx_status, gx_push, gx_review. Flow: generate → status → push; sync first when needed.\n\n===== FILE: github/overview.mdx =====\nPaid gx Cloud features: PR Summaries and @gx chat in GitHub PRs.\n\nPR Summaries: short comment on what/why/which files matter/what to skim/session context.\n@gx chat: ask questions, cite sources, override learned rules.\nData sources: current PR first (diffs, hunks, comments, summary); also sessions, indexed codebase, findings, rules, blame.\nGitHub App needed for posting. CLI can push without paid features.\n\n===== FILE: api/overview.mdx =====\ngx Cloud APIs use bearer-token auth (GitHub token via gh auth token, or CLI session). Optional X-Org-Id.\nEndpoints: GET /health, GET /v1/auth/me, POST /v1/publish, GET /bookmarks, GET /v1/review/context, POST /v1/summaries/generate, POST /v1/extracts, POST /v1/sessions, GET /v1/activity, POST /v1/code-review-history/record, POST /v1/code-review-history/search, POST /v1/reported-logs, POST /gx/openai/responses, POST /gx/openai/chat-completions.\nPR Summary and GitHub PR chat are paid features.\n\n===== FILE: gx-sync-contract.md =====\nMetadata-first sync between gx Cloud (Postgres) and local gx CLI + jj. Bookmark revision semantics, merge_status lifecycle (open/merged/closed), local jj catch-up via jj git fetch. Convex not on sync path.",
+  "writer": "openai:gpt-5.1",
+  "created": [
+    "docs/index.mdx",
+    "docs/getting-started.mdx",
+    "docs/reference/api.mdx",
+    "docs/troubleshooting.mdx"
+  ],
+  "updated": [],
+  "unchanged": [],
+  "skipped": [],
+  "deleted": [],
+  "needsReview": [
+    {
+      "path": "docs/reference/api.mdx",
+      "confidence": 0.76,
+      "reason": "Endpoint request and response schemas still need review."
+    },
+    {
+      "path": "docs/troubleshooting.mdx",
+      "confidence": 0.52,
+      "reason": "No error-focused files were found, so troubleshooting needs human review."
+    }
+  ],
+  "suggestedSections": [],
+  "provenance": {
+    "docs/index.mdx": [
+      "README.md",
+      "src/lib/auth-client.ts",
+      "src/lib/auth-server.ts",
+      "src/lib/bookmark-action-context.ts",
+      "src/lib/bookmark-review.ts",
+      "src/lib/bookmarks-client.ts",
+      "src/lib/chat-pin.ts",
+      "src/lib/confirm-stripe-setup.ts",
+      "src/lib/convex-env.test.ts",
+      "src/lib/convex-env.ts",
+      "src/lib/demo-review.ts",
+      "src/lib/design-tokens.ts",
+      "src/lib/diff-comment.ts",
+      "src/lib/feature-flags.ts",
+      "src/lib/gx-api-server.test.ts",
+      "src/lib/gx-api-server.ts",
+      "src/lib/gx-download.ts",
+      "src/lib/gx-pr-payload.ts",
+      "src/lib/gx-stack.ts",
+      "src/lib/move-selection.ts",
+      "src/lib/reviews-client.ts",
+      "src/lib/site-links.ts",
+      "src/lib/stripe-express-checkout-options.ts",
+      "src/lib/stripe-payment-element-options.ts",
+      "src/lib/stripe.ts",
+      "src/lib/use-stripe-elements-appearance.ts",
+      "src/lib/utils.ts"
+    ],
+    "docs/getting-started.mdx": [
+      "README.md",
+      "package.json",
+      "server/test/activity.test.ts",
+      "server/test/auth-middleware.test.ts",
+      "server/test/auth.ts"
+    ],
+    "docs/reference/api.mdx": [
+      "server/test/auth-middleware.test.ts",
+      "src/lib/auth-client.ts",
+      "src/lib/auth-server.ts",
+      "src/lib/bookmark-action-context.ts",
+      "src/lib/bookmark-review.ts",
+      "src/lib/bookmarks-client.ts",
+      "src/lib/chat-pin.ts",
+      "src/lib/confirm-stripe-setup.ts",
+      "src/lib/convex-env.test.ts",
+      "src/lib/convex-env.ts",
+      "src/lib/demo-review.ts",
+      "src/lib/design-tokens.ts",
+      "src/lib/diff-comment.ts",
+      "src/lib/feature-flags.ts",
+      "src/lib/gx-api-server.test.ts",
+      "src/lib/gx-api-server.ts",
+      "src/lib/gx-download.ts",
+      "src/lib/gx-pr-payload.ts",
+      "src/lib/gx-stack.ts",
+      "src/lib/move-selection.ts",
+      "src/lib/reviews-client.ts",
+      "src/lib/site-links.ts",
+      "src/lib/stripe-express-checkout-options.ts",
+      "src/lib/stripe-payment-element-options.ts",
+      "src/lib/stripe.ts",
+      "src/lib/use-stripe-elements-appearance.ts",
+      "src/lib/utils.ts"
+    ],
+    "docs/troubleshooting.mdx": [
+      "server/test/activity.test.ts",
+      "server/test/auth-middleware.test.ts",
+      "server/test/auth.ts",
+      "server/test/comments.test.ts",
+      "server/test/compat-routes.test.ts"
+    ]
+  }
+}
