@@ -1,0 +1,51 @@
+---
+title: Pull Requests
+description: Generated PR summaries in the pull request description, and @gx chat inside PR comments.
+---
+
+gx writes a review summary into your pull request description and answers
+questions when you mention `@gx` in PR comments. See [Getting Started](/docs)
+for instructions.
+
+## PR summaries
+
+gx appends a summary to your pull request description, with links and
+attribution for the important changes.
+
+Section Descriptions:
+
+| Section | Content |
+| --- | --- |
+| Verdict line | 🟢 **Quick scan** (LOW) / 🟡 **Careful pass** (MEDIUM) / 🔴 **Deep review** (HIGH), plus a one-line triage reason. The label always matches the Blast Radius level |
+| Overview | What changed and why |
+| Blast Radius | severity with file/area/line counts and a risk note. Judged by what the change can break — including code the diff never touches — not by diff size |
+| Notable Changes | the changes a reviewer should look at first, each with an `Attribution:` line naming the concrete source: a codebase path, a captured agent session, a prior PR, or docs |
+
+Summaries are generated when the GitHub App sees `pull_request`
+`opened`/`synchronize` for a branch with published gx context, and after a
+publish when a PR already exists. Push again to force a refresh.
+
+## Chat with @gx
+
+Mention `@gx` in any PR comment:
+
+```text
+@gx which files should I review first?
+@gx explain the auth callback changes
+@gx what is the highest-risk change in this PR?
+@gx are there missing tests?
+```
+
+Any answer from `@gx` will cite its source (codebase, previous PRs, past
+sessions, etc). `@gx` can answer questions based on outcomes from sessions,
+giving your team full transparency into every coding session.
+
+### Retire a learned rule
+
+```text
+@gx skip rule never use var
+@gx do not enforce this migration naming rule
+```
+
+When a matching active rule exists, it is retired and the override recorded.
+Requires **write**, **maintain**, or **admin** permission on the repository.

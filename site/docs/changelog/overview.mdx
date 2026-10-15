@@ -1,0 +1,91 @@
+---
+title: "gx changelog: new features, updates, and fixes"
+description: "Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes."
+---
+
+## August 16, 2026
+
+**`gx review` is the pre-ship verdict** — Two commands that both ended in a ship /
+no-ship verdict was one too many, so `gx gates` (briefly `gx constraints`) is gone
+and `gx review` is the single gate. The deterministic checks the gate owned moved
+into review rather than disappearing with it: the secret scan over added lines, the
+dependency audits (`govulncheck`, `npm audit`, `pip-audit`) when a manifest or
+lockfile moved, and `pytest` on Python projects — all three now run on the command
+that hooks and CI actually call. The `gxc`/`gxg` shorthands and the `gx_constraints`
+MCP tool retire with it; `gxr` is the shorthand, `gx_review` the tool.
+
+**Blocking and advisory lanes** — Findings now split by how much agreement is behind
+them. A finding blocks only when both reviewers raised it independently *and* the
+verification model confirmed it; one model's opinion is advisory and will not stop
+you. `--fail-on blocking` is the default, so the exit code gates without an opt-in
+flag, and `--fail-on none` turns it off.
+
+**Intent, not a prompt** — The positional argument is now one sentence saying what the
+change was meant to do — `gx review "fix the auth timeout"` — rather than a question or a
+filter. The reviewer holds the diff against it, so a change that quietly does more than
+its stated intent is itself a finding. Omit it and gx derives one from the branch name
+and recent commit subjects, and says so in the report.
+
+**`gx enhance`** — Prints the single highest-value fix in the current change as a
+prompt written for a coding model — the problem, the code, the change, and how to
+know it worked. It is `gx review`'s own fix plan narrowed to one item, so the two
+never disagree. Pipes cleanly: `gx enhance | claude -p "apply this"`.
+
+**Reviews survive the terminal** — Every run that inspected code saves its full JSON
+report to `review/review-findings-<timestamp>.json`, git-excluded automatically.
+`--md` prints the PR-comment shape, and `--fast` trades the second reviewer and the
+verification pass for wall clock when someone is waiting.
+
+## July 29, 2026
+
+**PR summary verdict labels** — The summary's triage line now states what the reader
+must do, not just a color: 🟢 **Quick scan** (LOW), 🟡 **Careful pass** (MEDIUM),
+🔴 **Deep review** (HIGH). The label is enforced server-side to always match the
+Blast Radius level, so a red summary can never read as permission to skim.
+
+**A new name** — The product is now **gx**. The CLI is `gx` (`gxr` for one-shot review,
+`gx-mcp` for agents). Install from `download.gx.run`; docs live at
+[gx.run/docs](/docs).
+
+## July 26, 2026
+
+**Plain Git is the whole workflow** — Capture and publishing are entirely hook-driven:
+`git commit` records a revision, `git push` captures the session and publishes. The
+porcelain that duplicated Git (`gx push`, `gx sync`, the background daemon, and the
+macOS menu-bar app) has been removed. If you have an older install, `gx init` cleans
+up the retired pieces.
+
+**PR summaries write to the description** — gx Cloud writes the rich summary
+into the pull request description below your own text, behind a gx-owned
+marker. Your notes survive every regeneration.
+
+**`gx review` is guaranteed read-only** — Review writes nothing: no repo state, no
+`.git/index` mutation, no `~/.gx` on machines that never ran `gx`, and no
+uploads when a gate fails. `--fail-on` turns a review into a CI gate with distinct
+exit codes for "findings survived" and "nothing was reviewed". See the
+[CLI reference](/docs/cli#gx-review).
+
+*Updated [August 16, 2026](#august-16-2026): review now saves its JSON report to
+`review/` (git-excluded, the one file it writes), gates on blocking findings by
+default, and exits 5 when the panel ran degraded.*
+
+**Two-model review panel** — `gx review` runs two independent Anthropic reviewers
+plus a judge that verifies and dedupes findings. When both reviewers flag the same
+issue independently, the report says so — the strongest confidence signal a panel
+produces.
+
+## July 2, 2026
+
+**Generated GitHub PR summaries** — After you publish with plain `git push` and open
+a PR, gx Cloud posts a generated review summary highlighting blast radius and
+high-impact review targets.
+
+**Code review history memory** — `gx review` pulls in indexed context from your past
+reviews and GitHub comment history, and attaches review policy context so findings
+stay consistent with how your team reviews code.
+
+**Prompted `gx review`** — Trigger `gx review` with a targeted prompt to focus the
+review on a specific concern instead of the full default sweep.
+
+*Updated [August 16, 2026](#august-16-2026): the positional argument is an intent, not
+a focusing prompt — use `--scope` and `--focus` to narrow a review.*

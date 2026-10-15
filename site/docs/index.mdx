@@ -1,0 +1,56 @@
+---
+title: Getting Started
+description: Install gx, initialize a repository, and publish your first reviewed change.
+---
+
+gx records which agent session produced each Git commit and uses that context
+for AI code review and generated pull request summaries. You work in plain Git.
+
+## Install
+
+```bash
+# CLI: GitHub release, or clone satoricorp/gx and `just install`
+gx auth login
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
+```
+
+This installs bash/zsh completions and the `gxr` shorthand for `gx review`.
+Review runs a model on your machine, so it needs an API key; the hooks, capture,
+and PR summaries do not.
+
+## Basic Usage
+
+The everyday flow is two gx commands: `gx init` once per repository to install
+the Git hooks, and `gx review` before you ship. Otherwise, use Git as normal —
+the hooks record revisions, capture sessions, and publish on push without any
+gx-specific commands.
+
+```bash
+cd your-repo
+gx init                                # once per repo: installs the Git hooks
+git add src/retry.js
+git commit -m "add retry helper"       # hook records the revision
+gx review                              # AI review and ship / no-ship verdict
+git push                               # hook captures the session and publishes
+gh pr create                           # gx Cloud adds the summary to the PR
+```
+
+Summaries require a GitHub App you create, installed on the account or
+organization that owns the repo. The [gx CLI README](https://github.com/satoricorp/gx#get-started)
+has the app settings and how to run the API.
+
+## Uninstall
+
+```bash
+rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gx-mcp
+rm -f ~/.local/share/bash-completion/completions/gx ~/.zfunc/_gx
+```
+
+Installed Git hooks exit silently when the binary is absent, so plain Git keeps
+working. Local data remains in `~/.gx`.
+
+## Pages
+
+- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx auth`, `gx doctor`
+- [MCP](/docs/mcp) — connect `gx_review` to Claude Code, Cursor, and Codex
+- [Pull Requests](/docs/pull-requests) — generated PR summaries and `@gx` chat on GitHub
