@@ -90,7 +90,8 @@ const SIGN_UP_SIZES = {
   compact: { box: "px-4 py-2 text-[11px] leading-4", icon: "h-3 w-3" },
 } as const;
 
-const INSTALL_COMMAND = "curl -fsSL https://download.gx.run/install.sh \\n  | sh";
+const INSTALL_COMMAND_COPY = "curl -fsSL https://download.gx.run/install.sh | sh";
+const INSTALL_COMMAND_DISPLAY = "curl -fsSL https://download.gx.run";
 
 /**
  * The install command, as a call to action.
@@ -120,7 +121,7 @@ function InstallCommand({
   // either way -- so this is a convenience, never the only way to get it.
   async function copyInstall() {
     try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      await navigator.clipboard.writeText(INSTALL_COMMAND_COPY);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch (error: unknown) {
@@ -134,7 +135,7 @@ function InstallCommand({
     <div
       className={`group inline-flex items-center gap-3 bg-white font-medium text-black transition-colors hover:bg-zinc-100 ${box} ${className ?? ""}`}
     >
-      <code className="min-w-0 font-mono font-normal whitespace-pre-wrap">{INSTALL_COMMAND}</code>
+      <code className="min-w-0 font-mono font-normal">{INSTALL_COMMAND_DISPLAY}</code>
       <button
         type="button"
         onClick={() => void copyInstall()}
