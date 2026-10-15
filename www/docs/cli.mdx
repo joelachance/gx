@@ -13,7 +13,8 @@ better context for review.
 gx init         # set up hooks in a repo (run once)
 gx review       # AI review and pre-ship verdict for the current change (alias: gxr)
 gx enhance      # the single highest-value fix, written for your coding model
-gx doctor       # diagnose capture, hooks, and publishing
+gx doctor       # diagnose capture, hooks, and local state
+gx index        # index this repository's source for review retrieval
 gx version      # print the version
 ```
 
@@ -262,6 +263,27 @@ gx doctor --fix      # apply safe repairs
 gx doctor --json     # machine-readable report
 gx doctor --report   # send this diagnosis and recent logs to support
 ```
+
+## gx index
+
+```bash
+gx index
+```
+
+Indexes the repository's source so review can retrieve from it. This is the
+optional part of gx: with no index, a review still reads the diff, the working
+tree, and whatever language servers and linters the project already runs — it
+just cannot answer "where else does this pattern appear" across the history.
+
+It needs `OPENAI_API_KEY` to embed and a vector store to write to
+(`TURBOPUFFER_API_KEY`). Both are separate from the key review itself uses.
+
+| Flag | Effect |
+| --- | --- |
+| `--full` | re-embed every file, ignoring the incremental manifest |
+| `--namespace` | override the vector namespace |
+| `--concurrency` | parallel embed batches |
+| `--json` | machine-readable result |
 
 ## gx version
 

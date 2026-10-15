@@ -1,51 +1,62 @@
 ---
 title: Pull Requests
-description: Generated PR summaries in the pull request description, and @gx chat inside PR comments.
+description: Posting the gx review comment on a pull request.
 ---
 
-gx writes a review summary into your pull request description and answers
-questions when you mention `@gx` in PR comments. See [Getting Started](/docs)
-for instructions.
+`gx review` posts its findings as a comment on the pull request, when it can
+find a GitHub token and a pull request to post them on.
 
-## PR summaries
+There is no GitHub App, and nothing to install on your account or organization.
+gx uses a token that is already yours.
 
-gx appends a summary to your pull request description, with links and
-attribution for the important changes.
+## Finding a token
 
-Section Descriptions:
+In order:
 
-| Section | Content |
-| --- | --- |
-| Verdict line | 🟢 **Quick scan** (LOW) / 🟡 **Careful pass** (MEDIUM) / 🔴 **Deep review** (HIGH), plus a one-line triage reason. The label always matches the Blast Radius level |
-| Overview | What changed and why |
-| Blast Radius | severity with file/area/line counts and a risk note. Judged by what the change can break — including code the diff never touches — not by diff size |
-| Notable Changes | the changes a reviewer should look at first, each with an `Attribution:` line naming the concrete source: a codebase path, a captured agent session, a prior PR, or docs |
+1. `GH_TOKEN`
+2. `GITHUB_TOKEN`
+3. the GitHub CLI's own login, via `gh auth token`
 
-Summaries are generated when the GitHub App sees `pull_request`
-`opened`/`synchronize` for a branch with published gx context, and after a
-publish when a PR already exists. Push again to force a refresh.
+If you are signed in with `gh auth login`, this already works and there is
+nothing to configure:
 
-## Chat with @gx
-
-Mention `@gx` in any PR comment:
-
-```text
-@gx which files should I review first?
-@gx explain the auth callback changes
-@gx what is the highest-risk change in this PR?
-@gx are there missing tests?
+```bash
+gh auth status
 ```
 
-Any answer from `@gx` will cite its source (codebase, previous PRs, past
-sessions, etc). `@gx` can answer questions based on outcomes from sessions,
-giving your team full transparency into every coding session.
+`GH_TOKEN` and `GITHUB_TOKEN` are the escape hatch for CI and for anyone who
+prefers a token they manage themselves:
 
-### Retire a learned rule
-
-```text
-@gx skip rule never use var
-@gx do not enforce this migration naming rule
+```bash
+GH_TOKEN=$(gh auth token) gx review
 ```
 
-When a matching active rule exists, it is retired and the override recorded.
-Requires **write**, **maintain**, or **admin** permission on the repository.
+A token needs no scopes beyond reading the repository and writing a comment. The
+default `gh auth login` token is enough.
+
+## Skipping it
+
+```bash
+gx review --no-comment
+```
+
+## Without a token
+
+Review still runs and still prints its report. Posting the comment is skipped
+and nothing fails — the token is a convenience for the PR surface, not a
+requirement for review.
+
+The same is true in reverse: `gx review` on a repository with no GitHub remote,
+or on a branch with no pull request, reviews normally and says nothing about
+posting.
+
+## What gets posted
+
+The comment is the `--md` shape of the report: the verdict, the findings split
+into blocking and advisory lanes, and the fix plan.
+
+```bash
+gx review --md        # print exactly what would be posted, without posting it
+```
+
+See [the CLI reference](/docs/cli#gx-review) for the full flag list.

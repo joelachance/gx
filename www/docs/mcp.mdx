@@ -19,37 +19,32 @@ export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
 `PATH` (Claude Code, Cursor, Codex) and reports something like
 `MCP ok: Claude Code, Cursor`.
 
-To register with every MCP client on your machine in one command, use
-[`add-mcp`](https://www.npmjs.com/package/add-mcp):
-
-```bash
-npx add-mcp @satoricorp/gx --name gx -g -y
-```
-
-| Flag | Effect |
-| --- | --- |
-| `-g` | install user-level so gx is available in every project; omit for project-level config |
-| `-y` | non-interactive (skip prompts) |
-| `-a <agent>` | target a specific agent (repeatable), e.g. `-a cursor` |
-
 Most clients load MCP servers at startup — restart the client or open a new
 chat after registering.
 
-For clients neither path covers, the stdio shape is:
+To register by hand, the stdio shape is:
 
 ```json
 {
   "mcpServers": {
     "gx": {
-      "command": "npx",
-      "args": ["-y", "@satoricorp/gx"]
+      "command": "/Users/you/.local/bin/gx-mcp",
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "GX_BINARY": "/Users/you/.local/bin/gx"
+      }
     }
   }
 }
 ```
 
-The server finds the CLI in `~/.local/bin` or on `PATH`; set `GX_BINARY`
-to point somewhere else.
+Put the model key in that `env` block. An MCP server is spawned by your editor,
+not from a shell, so it inherits whatever environment the editor was launched
+with — which is usually not the one in your profile. A key that is missing there
+means no reviewer runs, and the tool says so.
+
+`GX_BINARY` is optional; the server finds the CLI in `~/.local/bin` or on
+`PATH` without it.
 
 ## gx_review
 
@@ -59,16 +54,20 @@ to point somewhere else.
 | `scope` | enum | focused lens: `architecture`, `security`, `performance`, `onboarding`, `docs`, `dependencies`, `testing`, `maintainability` |
 | `focus` | string | limit review to files under this path prefix |
 | `deep` | boolean | full-spectrum review with more local and indexed context |
-| `fast` | boolean | optimize for wall clock: one reviewer, no verification pass — for reviews someone is waiting on |
 | `verbose` | boolean | include repo facts, docs, and changed files |
 | `repo` | boolean | review the whole repository instead of the current change |
 | `cwd` | string | repository working directory (defaults to the MCP server process cwd) |
 
-Runs `gx review --no-comment --client mcp`, so an agent asking for review
-context never comments on a pull request — commenting stays a deliberate act of
-the CLI, where a human typed the command. The run itself still records to gx
-Cloud history, so MCP reviews count in per-surface usage; use the `gx review
---no-publish` CLI flag to suppress that too.
+Runs `gx review --no-comment --client mcp`, so an agent asking for review context
+never comments on a pull request. Posting a comment stays a deliberate act of
+the CLI, where a human typed the command.
+
+There is no `fast` parameter, and there was one. Its description told the caller
+to use it "for interactive reviews someone is waiting on" — which is every
+review arriving through MCP, so agents selected it essentially always. What it
+selected was a review with no verification pass, which is the pass that decides
+what blocks a ship. `--fast` still exists on the CLI, where a human choosing it
+knows the trade.
 
 The tool is read-only and never initializes a repository. May run up to 5
 minutes. A no-ship verdict is a successful tool call, not an error — the verdict
@@ -76,8 +75,8 @@ lives in the report's final `Verdict:` / `Next:` lines, with the blocking and
 advisory lanes and a **FIX PLAN** above them. See
 [the CLI reference](/docs/cli#gx-review) for what those mean.
 
-Saving and publishing are plain Git, not MCP calls: `git add` + `git commit`
-record the revision through the hooks, `git push` captures and publishes.
+Saving is plain Git, not MCP calls: `git add` and `git commit` through the
+installed hooks. There is no gx commit verb and nothing to publish.
 
 ## AGENTS.md instructions
 
@@ -87,13 +86,13 @@ skipped that step, add them manually:
 ```markdown
 # Agents
 
-Version control: plain Git. Once `gx init` installs the hooks, gx records and publishes automatically — there is no gx save verb.
+Version control: plain Git. Once `gx init` installs the hooks, gx records each commit as a reviewable revision automatically — there is no gx save verb.
 
 Default flow:
 - Run `git add` to stage the files for this revision.
 - Run `git commit -m "..."` to save. A gx hook records the commit as a reviewable revision.
-- Run plain `git push` to publish. The gx pre-push hook captures the session and publishes code changes, sessions, and gx metadata to gx Cloud automatically — do not run `gx push` or `gx capture push` yourself; they bypass the hook.
-- Open PRs with `gh pr create` (or the GitHub UI). Do not seed a `## Summary` in the PR body — leave human notes only; gx Cloud appends the rich summary below once the PR exists.
+- Run plain `git push`. There is no gx save or push verb, and nothing is uploaded anywhere.
+- Open PRs with `gh pr create` (or the GitHub UI).
 - To amend, use `git commit --amend` and preserve the `gx-revision:` trailer in the message.
 
 For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.

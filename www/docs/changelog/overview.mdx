@@ -3,6 +3,38 @@ title: "gx changelog: new features, updates, and fixes"
 description: "Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes."
 ---
 
+## October 15, 2026
+
+**gx runs on your own key, with no account** — There is no gx Cloud any more and
+nothing to sign in to. `gx review` and `gx enhance` talk to `api.anthropic.com`
+or `api.openai.com` using `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, and to nothing
+else. `gx auth login`, `gx auth status`, and `gx auth logout` are gone.
+
+**The GitHub App is gone too** — Posting a review comment needs no app and no
+installation on your account. `gx review` finds a token from `GH_TOKEN`, then
+`GITHUB_TOKEN`, then the GitHub CLI's own login, and uses whichever it finds. If
+you are signed in with `gh auth login`, comments already work.
+
+**One install command** — `curl -fsSL https://download.gx.run/install.sh | sh`
+places `gx`, `gx-mcp`, and completions, and verifies the archive against its
+published checksum. Releases are served from Cloudflare R2 inside the free tier,
+with the same archives on GitHub Releases. `gx update` is gone.
+
+**The commit trailer is no longer a URL** — It was `gx: https://gx.run/r/<id>`,
+and the page it named is gone. It is now `gx-revision: <id>`. The trailer was
+never decoration: resolving a revision to a commit is a `git log --grep` for that
+line, so the marker had to stay. Both forms parse, so history keeps resolving.
+
+**The site lives in this repository** — The Next.js app moved from a second
+repository into `www/`, and is now a static export with no backend, no database,
+and no server. The landing page is otherwise unchanged.
+
+**What was left out** — Session context, the code index, and the shared review
+knowledge base need a vector index to search. With none configured they report
+themselves disabled, silently, and the review runs on the diff, the working tree,
+and the project's own linters and test suites. That is most of the value; the
+recall layer is the part you opt into.
+
 ## August 16, 2026
 
 **`gx review` is the pre-ship verdict** — Two commands that both ended in a ship /

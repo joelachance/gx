@@ -312,7 +312,9 @@ function MouseLook({
   const [hovered, setHovered] = useState(false);
   const invalidate = useThree((state) => state.invalidate);
   const invalidateRef = useRef(invalidate);
-  invalidateRef.current = invalidate;
+  useEffect(() => {
+    invalidateRef.current = invalidate;
+  }, [invalidate]);
   const settings = MOUSE_SMOOTHING[variant];
   const trackGlobally =
     variant === "hero" || variant === "header" || variant === "footer";

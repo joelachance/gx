@@ -1,55 +1,87 @@
 ---
 title: Getting Started
-description: Install gx, initialize a repository, and publish your first reviewed change.
+description: Install gx, initialize a repository, and review your first change.
 ---
 
-gx records which agent session produced each Git commit and uses that context
-for AI code review and generated pull request summaries. You work in plain Git.
+gx is a CLI for code review. It reads the change you are about to ship, holds it
+against the session that produced it, and gives you a ship / no-ship verdict. You
+work in plain Git; there is no gx commit verb and nothing to sign in to.
 
 ## Install
 
 ```bash
-# CLI: GitHub release, or clone satoricorp/gx and `just install`
+curl -fsSL https://download.gx.run/install.sh | sh
+```
+
+That puts `gx`, `gx-mcp`, and shell completions in `~/.local/bin`, and verifies
+the archive against its published checksum first. To build from source instead,
+clone [the repository](https://github.com/satoricorp/gx) and run `just install`.
+
+Review runs a model, so it needs **your** key:
+
+```bash
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
 
-This installs bash/zsh completions and the `gxr` shorthand for `gx review`.
-Review runs a model on your machine, so it needs an API key; the hooks, capture,
-and PR summaries do not.
+There is no gx account and no server in the path. The key goes to
+`api.anthropic.com` or `api.openai.com` and nowhere else.
 
-## Basic Usage
-
-The everyday flow is two gx commands: `gx init` once per repository to install
-the Git hooks, and `gx review` before you ship. Otherwise, use Git as normal —
-the hooks record revisions, capture sessions, and publish on push without any
-gx-specific commands.
+## Basic usage
 
 ```bash
 cd your-repo
-gx init                                # once per repo: installs the Git hooks
-git add src/retry.js
-git commit -m "add retry helper"       # hook records the revision
-gx review                              # AI review and ship / no-ship verdict
-git push                               # hook captures the session and publishes
-gh pr create                           # gx Cloud adds the summary to the PR
+gx init                  # once per repo: hooks, identity, and the MCP server
+
+# ... make changes in your editor, using whatever coding agent you like ...
+
+gx review                # the verdict, before you ship
+git push                 # ordinary git; the hook stamps each commit
+gh pr create             # ordinary git
 ```
 
-Summaries require a GitHub App you create, installed on the account or
-organization that owns the repo. The [gx CLI README](https://github.com/satoricorp/gx#get-started)
-has the app settings and how to run the API.
+`gx review` takes an optional intent — one sentence, in your words, saying what
+the change was meant to do:
+
+```bash
+gx review "fix the auth timeout"
+```
+
+It is not a question and not a filter. The reviewer holds the diff against it, so
+a change that quietly does more than the intent says is itself a finding.
+
+If you are signed in with the GitHub CLI, `gx review` posts its comment on the
+pull request as well. `GH_TOKEN` or `GITHUB_TOKEN` works too; `--no-comment`
+skips it either way. Neither is required.
+
+## Reading the verdict
+
+Findings land in two lanes. **Blocking** stops the change and exits `3`.
+**Advisory** is reported and does not. A finding blocks only when both reviewers
+raised it independently *and* a third model confirmed it — one model's opinion
+is advisory.
+
+```bash
+gx review --fail-on none    # report everything, never gate
+gx review --json            # machine-readable
+gx review --md              # the PR-comment body
+```
+
+Exit codes: `0` clean, `3` blocking findings, `4` nothing to review, `5` the
+review ran degraded. In CI, `3` is the gate.
 
 ## Uninstall
 
 ```bash
-rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gx-mcp
+rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gxe ~/.local/bin/gx-mcp
 rm -f ~/.local/share/bash-completion/completions/gx ~/.zfunc/_gx
 ```
 
-Installed Git hooks exit silently when the binary is absent, so plain Git keeps
-working. Local data remains in `~/.gx`.
+Installed hooks exit silently when the binary is gone, so plain Git keeps
+working. Local data stays in `~/.gx`.
 
 ## Pages
 
-- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx doctor`
+- [CLI](/docs/cli) — every command and flag
+- [How it works](/docs/how-it-works) — what the reviewers read, and what the verdict means
 - [MCP](/docs/mcp) — connect `gx_review` to Claude Code, Cursor, and Codex
-- [Pull Requests](/docs/pull-requests) — generated PR summaries and `@gx` chat on GitHub
+- [Pull Requests](/docs/pull-requests) — posting the review comment

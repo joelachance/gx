@@ -1,9 +1,20 @@
+# gx — full documentation
+
+Generated from the MDX sources by scripts/render-llms-txt.sh. Do not edit.
+
+---
+
 # How it works
+
+_What gx captures, what gx review does with it, and where the two differ in a local install._
+
 
 gx adds a context layer around your existing Git workflow. It captures what
 happened during coding sessions, attaches that context to ordinary Git commits,
-and uses it for two review surfaces: `gx review` locally and generated PR
-summaries on GitHub.
+and reads it back during review.
+
+Everything below runs on your machine. There is no gx server, no account, and no
+per-seat feature behind any of it.
 
 ## The problem
 
@@ -24,13 +35,34 @@ Agent-written code breaks two of Git's assumptions:
 
 ## What gx captures
 
-- **Sessions** — transcripts from Claude Code, Codex, and Cursor. The pre-push
-  hook captures them into `~/.gx/gx.db` and publishes them alongside
-  the code they produced.
+- **Sessions** — transcripts from Claude Code, Codex, and Cursor, captured into
+  `~/.gx/gx.db`. This happens entirely locally; there is nothing to publish to.
 - **Revisions** — each plain `git commit` is recorded as one reviewable unit,
-  down to individual hunks. gx links each revision to the session that
-  produced it by matching the changed hunks against captured session activity —
-  nothing is attached by hand.
+  down to individual hunks, and stamped with a `gx-revision:` trailer. That
+  trailer is how a revision is found again later — it is an index, not a link.
+
+### Where capture stops and retrieval starts
+
+This is the honest boundary, and it is worth being explicit about it.
+
+Capturing a session needs nothing. Reading one back during `gx review` needs an
+index to search, and gx searches a vector store. With no index configured, the
+session, code-index, and review-knowledge retrievers report themselves
+**disabled** and the review runs without them — no error, no warning banner,
+just less context than a configured install sees.
+
+So in a stock local install:
+
+| Context | Available? |
+| --- | --- |
+| The diff, the working tree, the repository | Always |
+| Language servers, linters, test suites it already knows how to run | Always |
+| Captured sessions, indexed code, shared review knowledge | Only with an index configured |
+
+Everything the review *decides* is available either way. What an index buys is
+recall: the ability to answer "where else does this pattern appear" and "what
+did we decide last time about this file". `gx index` builds one, and it needs
+`OPENAI_API_KEY` plus a vector store to write to.
 
 ## How gx review works
 
@@ -62,95 +94,121 @@ one file it writes is the report itself, saved to `review/` and added to your
 local Git excludes so it never shows up as a change. See the
 [CLI reference](/docs/cli#gx-review).
 
-## How PR summaries work
-
-On `git push`, the pre-push hook uploads a review bundle: the revisions, their
-hunks, and the linked sessions. When a pull request exists, gx Cloud
-generates a summary from that bundle plus the indexed codebase, and writes it
-into the PR description below your own text.
-
-The summary opens with a verdict — 🟢 **Quick scan**, 🟡 **Careful pass**, or
-🔴 **Deep review** — judged by blast radius: what the change can break,
-including code the diff never touches. Notable Changes each carry an
-`Attribution:` line naming the concrete source that informed them. See
-[Pull Requests](/docs/pull-requests).
-
 ## Why this speeds up review
 
-- The verdict tells a reviewer how much attention a PR needs before they open
-  the diff. A two-file rename that breaks downstream consumers gets 🔴; a
-  contained refactor gets 🟢.
-- Notable Changes point at the hunks that decide correctness, so the mechanical
-  rest can be skimmed instead of read line by line.
-- Session provenance answers "why is this here?" without a round-trip to the
-  author — the prompt, commands, and tests are part of the review context.
+- The verdict tells you whether the change is safe to ship before it becomes
+  someone else's problem.
+- A finding blocks only on agreement from independent reviewers plus
+  confirmation from a third, which is what makes a `NO-SHIP` worth listening to.
+- Session provenance answers "why is this here?" without a round-trip to whoever
+  wrote the prompt — when an index is configured, the prompt, commands, and
+  tests are part of the review context.
 - `gx review` catches findings before the PR exists, when they are cheapest to
   fix.
 
 ## Everything is still just Git
 
-The hooks publish normal Git branches and commits; sessions and metadata go to
-gx Cloud as a review bundle. Nothing about your repository becomes
-gx-specific — if you stop using gx tomorrow, your branches and
-commits remain ordinary Git.
+The hooks stamp plain `git commit` messages and never block a push. Your
+repository does not become gx-specific in any way that outlives the binary: stop
+using gx tomorrow and your branches, commits, and pull requests are ordinary
+Git. Session capture writes to `~/.gx` and goes nowhere else.
 
 ---
 
 # Getting Started
 
-gx records which agent session produced each Git commit and uses that context
-for AI code review and generated pull request summaries. You work in plain Git.
+_Install gx, initialize a repository, and review your first change._
+
+
+gx is a CLI for code review. It reads the change you are about to ship, holds it
+against the session that produced it, and gives you a ship / no-ship verdict. You
+work in plain Git; there is no gx commit verb and nothing to sign in to.
 
 ## Install
 
 ```bash
 curl -fsSL https://download.gx.run/install.sh | sh
+```
+
+That puts `gx`, `gx-mcp`, and shell completions in `~/.local/bin`, and verifies
+the archive against its published checksum first. To build from source instead,
+clone [the repository](https://github.com/satoricorp/gx) and run `just install`.
+
+Review runs a model, so it needs **your** key:
+
+```bash
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
 
-This installs bash/zsh completions and the `gxr` shorthand for `gx review`.
-Review runs a model on your machine, so it needs an API key; the hooks, capture,
-and PR summaries do not.
+There is no gx account and no server in the path. The key goes to
+`api.anthropic.com` or `api.openai.com` and nowhere else.
 
-## Basic Usage
-
-The everyday flow is two gx commands: `gx init` once per repository to install
-the Git hooks, and `gx review` before you ship. Otherwise, use Git as normal —
-the hooks record revisions, capture sessions, and publish on push without any
-gx-specific commands.
+## Basic usage
 
 ```bash
 cd your-repo
-gx init                                # once per repo: installs the Git hooks
-git add src/retry.js
-git commit -m "add retry helper"       # hook records the revision
-gx review                              # AI review and ship / no-ship verdict
-git push                               # hook captures the session and publishes
-gh pr create                           # gx Cloud adds the summary to the PR
+gx init                  # once per repo: hooks, identity, and the MCP server
+
+# ... make changes in your editor, using whatever coding agent you like ...
+
+gx review                # the verdict, before you ship
+git push                 # ordinary git; the hook stamps each commit
+gh pr create             # ordinary git
 ```
 
-Summaries require the [gx GitHub App](https://github.com/apps/satoricorp-gx)
-on the account or org that owns the repo.
+`gx review` takes an optional intent — one sentence, in your words, saying what
+the change was meant to do:
+
+```bash
+gx review "fix the auth timeout"
+```
+
+It is not a question and not a filter. The reviewer holds the diff against it, so
+a change that quietly does more than the intent says is itself a finding.
+
+If you are signed in with the GitHub CLI, `gx review` posts its comment on the
+pull request as well. `GH_TOKEN` or `GITHUB_TOKEN` works too; `--no-comment`
+skips it either way. Neither is required.
+
+## Reading the verdict
+
+Findings land in two lanes. **Blocking** stops the change and exits `3`.
+**Advisory** is reported and does not. A finding blocks only when both reviewers
+raised it independently *and* a third model confirmed it — one model's opinion
+is advisory.
+
+```bash
+gx review --fail-on none    # report everything, never gate
+gx review --json            # machine-readable
+gx review --md              # the PR-comment body
+```
+
+Exit codes: `0` clean, `3` blocking findings, `4` nothing to review, `5` the
+review ran degraded. In CI, `3` is the gate.
 
 ## Uninstall
 
 ```bash
-rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gx-mcp
+rm -f ~/.local/bin/gx ~/.local/bin/gxr ~/.local/bin/gxe ~/.local/bin/gx-mcp
 rm -f ~/.local/share/bash-completion/completions/gx ~/.zfunc/_gx
 ```
 
-Installed Git hooks exit silently when the binary is absent, so plain Git keeps
-working. Local data remains in `~/.gx`.
+Installed hooks exit silently when the binary is gone, so plain Git keeps
+working. Local data stays in `~/.gx`.
 
 ## Pages
 
-- [CLI](/docs/cli) — every command: `gx init`, `gx review`, `gx enhance`, `gx doctor`
+- [CLI](/docs/cli) — every command and flag
+- [How it works](/docs/how-it-works) — what the reviewers read, and what the verdict means
 - [MCP](/docs/mcp) — connect `gx_review` to Claude Code, Cursor, and Codex
-- [Pull Requests](/docs/pull-requests) — generated PR summaries and `@gx` chat on GitHub
+- [Pull Requests](/docs/pull-requests) — posting the review comment
 
 ---
 
 # CLI
+
+_CLI Reference with flags, examples, and exit codes._
+
 
 Initialize any repository with `gx init`. This installs git hooks that capture
 your session context and pairs it with your code changes, giving gx
@@ -162,15 +220,22 @@ better context for review.
 gx init         # set up hooks in a repo (run once)
 gx review       # AI review and pre-ship verdict for the current change (alias: gxr)
 gx enhance      # the single highest-value fix, written for your coding model
-gx doctor       # diagnose capture, hooks, and publishing
+gx doctor       # diagnose capture, hooks, and local state
+gx index        # index this repository's source for review retrieval
 gx version      # print the version
 ```
 
-`gx review` and `gx enhance` call a model, so they need an API key:
+`gx review` and `gx enhance` call a model, so they need an API key. There is
+no gx account: the key is yours, it goes straight to the provider, and nothing
+else is contacted.
 
 ```bash
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
+
+`gx review` will also post its comment on the pull request if it can find a
+GitHub token -- `GH_TOKEN`, `GITHUB_TOKEN`, or the `gh` CLI's own login. None
+of that is required; `--no-comment` skips it.
 
 ## gx init
 
@@ -397,7 +462,6 @@ Output is plain text on stdout, so it pipes. Exit status is always `0` — gatin
 is `gx review`'s job. When the review finds nothing to fix, `gx enhance` says so
 on stderr and stdout stays empty.
 
-
 ## gx doctor
 
 ```bash
@@ -406,6 +470,27 @@ gx doctor --fix      # apply safe repairs
 gx doctor --json     # machine-readable report
 gx doctor --report   # send this diagnosis and recent logs to support
 ```
+
+## gx index
+
+```bash
+gx index
+```
+
+Indexes the repository's source so review can retrieve from it. This is the
+optional part of gx: with no index, a review still reads the diff, the working
+tree, and whatever language servers and linters the project already runs — it
+just cannot answer "where else does this pattern appear" across the history.
+
+It needs `OPENAI_API_KEY` to embed and a vector store to write to
+(`TURBOPUFFER_API_KEY`). Both are separate from the key review itself uses.
+
+| Flag | Effect |
+| --- | --- |
+| `--full` | re-embed every file, ignoring the incremental manifest |
+| `--namespace` | override the vector namespace |
+| `--concurrency` | parallel embed batches |
+| `--json` | machine-readable result |
 
 ## gx version
 
@@ -429,6 +514,9 @@ gxr   # gx review
 
 # MCP
 
+_Connect the gx MCP server to Claude Code, Cursor, Codex, and other MCP clients._
+
+
 The MCP server ships with the CLI as a local stdio binary. It shells out to the
 CLI, so repo state stays on your machine. It exposes one tool: `gx_review`.
 
@@ -445,37 +533,32 @@ export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
 `PATH` (Claude Code, Cursor, Codex) and reports something like
 `MCP ok: Claude Code, Cursor`.
 
-To register with every MCP client on your machine in one command, use
-[`add-mcp`](https://www.npmjs.com/package/add-mcp):
-
-```bash
-npx add-mcp @satoricorp/gx --name gx -g -y
-```
-
-| Flag | Effect |
-| --- | --- |
-| `-g` | install user-level so gx is available in every project; omit for project-level config |
-| `-y` | non-interactive (skip prompts) |
-| `-a <agent>` | target a specific agent (repeatable), e.g. `-a cursor` |
-
 Most clients load MCP servers at startup — restart the client or open a new
 chat after registering.
 
-For clients neither path covers, the stdio shape is:
+To register by hand, the stdio shape is:
 
 ```json
 {
   "mcpServers": {
     "gx": {
-      "command": "npx",
-      "args": ["-y", "@satoricorp/gx"]
+      "command": "/Users/you/.local/bin/gx-mcp",
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "GX_BINARY": "/Users/you/.local/bin/gx"
+      }
     }
   }
 }
 ```
 
-The server finds the CLI in `~/.local/bin` or on `PATH`; set `GX_BINARY`
-to point somewhere else.
+Put the model key in that `env` block. An MCP server is spawned by your editor,
+not from a shell, so it inherits whatever environment the editor was launched
+with — which is usually not the one in your profile. A key that is missing there
+means no reviewer runs, and the tool says so.
+
+`GX_BINARY` is optional; the server finds the CLI in `~/.local/bin` or on
+`PATH` without it.
 
 ## gx_review
 
@@ -485,16 +568,20 @@ to point somewhere else.
 | `scope` | enum | focused lens: `architecture`, `security`, `performance`, `onboarding`, `docs`, `dependencies`, `testing`, `maintainability` |
 | `focus` | string | limit review to files under this path prefix |
 | `deep` | boolean | full-spectrum review with more local and indexed context |
-| `fast` | boolean | optimize for wall clock: one reviewer, no verification pass — for reviews someone is waiting on |
 | `verbose` | boolean | include repo facts, docs, and changed files |
 | `repo` | boolean | review the whole repository instead of the current change |
 | `cwd` | string | repository working directory (defaults to the MCP server process cwd) |
 
-Runs `gx review --no-comment --client mcp`, so an agent asking for review
-context never comments on a pull request — commenting stays a deliberate act of
-the CLI, where a human typed the command. The run itself still records to gx
-Cloud history, so MCP reviews count in per-surface usage; use the `gx review
---no-publish` CLI flag to suppress that too.
+Runs `gx review --no-comment --client mcp`, so an agent asking for review context
+never comments on a pull request. Posting a comment stays a deliberate act of
+the CLI, where a human typed the command.
+
+There is no `fast` parameter, and there was one. Its description told the caller
+to use it "for interactive reviews someone is waiting on" — which is every
+review arriving through MCP, so agents selected it essentially always. What it
+selected was a review with no verification pass, which is the pass that decides
+what blocks a ship. `--fast` still exists on the CLI, where a human choosing it
+knows the trade.
 
 The tool is read-only and never initializes a repository. May run up to 5
 minutes. A no-ship verdict is a successful tool call, not an error — the verdict
@@ -502,8 +589,8 @@ lives in the report's final `Verdict:` / `Next:` lines, with the blocking and
 advisory lanes and a **FIX PLAN** above them. See
 [the CLI reference](/docs/cli#gx-review) for what those mean.
 
-Saving and publishing are plain Git, not MCP calls: `git add` + `git commit`
-record the revision through the hooks, `git push` captures and publishes.
+Saving is plain Git, not MCP calls: `git add` and `git commit` through the
+installed hooks. There is no gx commit verb and nothing to publish.
 
 ## AGENTS.md instructions
 
@@ -513,13 +600,13 @@ skipped that step, add them manually:
 ```markdown
 # Agents
 
-Version control: plain Git. Once `gx init` installs the hooks, gx records and publishes automatically — there is no gx save verb.
+Version control: plain Git. Once `gx init` installs the hooks, gx records each commit as a reviewable revision automatically — there is no gx save verb.
 
 Default flow:
 - Run `git add` to stage the files for this revision.
 - Run `git commit -m "..."` to save. A gx hook records the commit as a reviewable revision.
-- Run plain `git push` to publish. The gx pre-push hook captures the session and publishes code changes, sessions, and gx metadata to gx Cloud automatically — do not run `gx push` or `gx capture push` yourself; they bypass the hook.
-- Open PRs with `gh pr create` (or the GitHub UI). Do not seed a `## Summary` in the PR body — leave human notes only; gx Cloud appends the rich summary below once the PR exists.
+- Run plain `git push`. There is no gx save or push verb, and nothing is uploaded anywhere.
+- Open PRs with `gh pr create` (or the GitHub UI).
 - To amend, use `git commit --amend` and preserve the `gx-revision:` trailer in the message.
 
 For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the current change.
@@ -529,56 +616,105 @@ For AI review, run the `gx_review` MCP tool (or the `gx review` CLI) on the curr
 
 # Pull Requests
 
-gx writes a review summary into your pull request description and answers
-questions when you mention `@gx` in PR comments. See [Getting Started](/docs)
-for instructions.
+_Posting the gx review comment on a pull request._
 
-## PR summaries
 
-gx appends a summary to your pull request description, with links and
-attribution for the important changes.
+`gx review` posts its findings as a comment on the pull request, when it can
+find a GitHub token and a pull request to post them on.
 
-Section Descriptions:
+There is no GitHub App, and nothing to install on your account or organization.
+gx uses a token that is already yours.
 
-| Section | Content |
-| --- | --- |
-| Verdict line | 🟢 **Quick scan** (LOW) / 🟡 **Careful pass** (MEDIUM) / 🔴 **Deep review** (HIGH), plus a one-line triage reason. The label always matches the Blast Radius level |
-| Overview | What changed and why |
-| Blast Radius | severity with file/area/line counts and a risk note. Judged by what the change can break — including code the diff never touches — not by diff size |
-| Notable Changes | the changes a reviewer should look at first, each with an `Attribution:` line naming the concrete source: a codebase path, a captured agent session, a prior PR, or docs |
+## Finding a token
 
-Summaries are generated when the GitHub App sees `pull_request`
-`opened`/`synchronize` for a branch with published gx context, and after a
-publish when a PR already exists. Push again to force a refresh.
+In order:
 
-## Chat with @gx
+1. `GH_TOKEN`
+2. `GITHUB_TOKEN`
+3. the GitHub CLI's own login, via `gh auth token`
 
-Mention `@gx` in any PR comment:
+If you are signed in with `gh auth login`, this already works and there is
+nothing to configure:
 
-```text
-@gx which files should I review first?
-@gx explain the auth callback changes
-@gx what is the highest-risk change in this PR?
-@gx are there missing tests?
+```bash
+gh auth status
 ```
 
-Any answer from `@gx` will cite its source (codebase, previous PRs, past
-sessions, etc). `@gx` can answer questions based on outcomes from sessions,
-giving your team full transparency into every coding session.
+`GH_TOKEN` and `GITHUB_TOKEN` are the escape hatch for CI and for anyone who
+prefers a token they manage themselves:
 
-### Retire a learned rule
-
-```text
-@gx skip rule never use var
-@gx do not enforce this migration naming rule
+```bash
+GH_TOKEN=$(gh auth token) gx review
 ```
 
-When a matching active rule exists, it is retired and the override recorded.
-Requires **write**, **maintain**, or **admin** permission on the repository.
+A token needs no scopes beyond reading the repository and writing a comment. The
+default `gh auth login` token is enough.
+
+## Skipping it
+
+```bash
+gx review --no-comment
+```
+
+## Without a token
+
+Review still runs and still prints its report. Posting the comment is skipped
+and nothing fails — the token is a convenience for the PR surface, not a
+requirement for review.
+
+The same is true in reverse: `gx review` on a repository with no GitHub remote,
+or on a branch with no pull request, reviews normally and says nothing about
+posting.
+
+## What gets posted
+
+The comment is the `--md` shape of the report: the verdict, the findings split
+into blocking and advisory lanes, and the fix plan.
+
+```bash
+gx review --md        # print exactly what would be posted, without posting it
+```
+
+See [the CLI reference](/docs/cli#gx-review) for the full flag list.
 
 ---
 
 # gx changelog: new features, updates, and fixes
+
+_Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes._
+
+
+## October 15, 2026
+
+**gx runs on your own key, with no account** — There is no gx Cloud any more and
+nothing to sign in to. `gx review` and `gx enhance` talk to `api.anthropic.com`
+or `api.openai.com` using `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, and to nothing
+else. `gx auth login`, `gx auth status`, and `gx auth logout` are gone.
+
+**The GitHub App is gone too** — Posting a review comment needs no app and no
+installation on your account. `gx review` finds a token from `GH_TOKEN`, then
+`GITHUB_TOKEN`, then the GitHub CLI's own login, and uses whichever it finds. If
+you are signed in with `gh auth login`, comments already work.
+
+**One install command** — `curl -fsSL https://download.gx.run/install.sh | sh`
+places `gx`, `gx-mcp`, and completions, and verifies the archive against its
+published checksum. Releases are served from Cloudflare R2 inside the free tier,
+with the same archives on GitHub Releases. `gx update` is gone.
+
+**The commit trailer is no longer a URL** — It was `gx: https://gx.run/r/<id>`,
+and the page it named is gone. It is now `gx-revision: <id>`. The trailer was
+never decoration: resolving a revision to a commit is a `git log --grep` for that
+line, so the marker had to stay. Both forms parse, so history keeps resolving.
+
+**The site lives in this repository** — The Next.js app moved from a second
+repository into `www/`, and is now a static export with no backend, no database,
+and no server. The landing page is otherwise unchanged.
+
+**What was left out** — Session context, the code index, and the shared review
+knowledge base need a vector index to search. With none configured they report
+themselves disabled, silently, and the review runs on the diff, the working tree,
+and the project's own linters and test suites. That is most of the value; the
+recall layer is the part you opt into.
 
 ## August 16, 2026
 
@@ -666,3 +802,4 @@ review on a specific concern instead of the full default sweep.
 
 *Updated [August 16, 2026](#august-16-2026): the positional argument is an intent, not
 a focusing prompt — use `--scope` and `--focus` to narrow a review.*
+
