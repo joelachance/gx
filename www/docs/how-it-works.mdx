@@ -1,12 +1,14 @@
 ---
 title: How it works
-description: What gx captures, how gx review and PR summaries use it, and why that makes review faster.
+description: What gx captures, what gx review does with it, and where the two differ in a local install.
 ---
 
 gx adds a context layer around your existing Git workflow. It captures what
 happened during coding sessions, attaches that context to ordinary Git commits,
-and uses it for two review surfaces: `gx review` locally and generated PR
-summaries on GitHub.
+and reads it back during review.
+
+Everything below runs on your machine. There is no gx server, no account, and no
+per-seat feature behind any of it.
 
 ## The problem
 
@@ -27,13 +29,34 @@ Agent-written code breaks two of Git's assumptions:
 
 ## What gx captures
 
-- **Sessions** — transcripts from Claude Code, Codex, and Cursor. The pre-push
-  hook captures them into `~/.gx/gx.db` and publishes them alongside
-  the code they produced.
+- **Sessions** — transcripts from Claude Code, Codex, and Cursor, captured into
+  `~/.gx/gx.db`. This happens entirely locally; there is nothing to publish to.
 - **Revisions** — each plain `git commit` is recorded as one reviewable unit,
-  down to individual hunks. gx links each revision to the session that
-  produced it by matching the changed hunks against captured session activity —
-  nothing is attached by hand.
+  down to individual hunks, and stamped with a `gx-revision:` trailer. That
+  trailer is how a revision is found again later — it is an index, not a link.
+
+### Where capture stops and retrieval starts
+
+This is the honest boundary, and it is worth being explicit about it.
+
+Capturing a session needs nothing. Reading one back during `gx review` needs an
+index to search, and gx searches a vector store. With no index configured, the
+session, code-index, and review-knowledge retrievers report themselves
+**disabled** and the review runs without them — no error, no warning banner,
+just less context than a configured install sees.
+
+So in a stock local install:
+
+| Context | Available? |
+| --- | --- |
+| The diff, the working tree, the repository | Always |
+| Language servers, linters, test suites it already knows how to run | Always |
+| Captured sessions, indexed code, shared review knowledge | Only with an index configured |
+
+Everything the review *decides* is available either way. What an index buys is
+recall: the ability to answer "where else does this pattern appear" and "what
+did we decide last time about this file". `gx index` builds one, and it needs
+`OPENAI_API_KEY` plus a vector store to write to.
 
 ## How gx review works
 
@@ -65,34 +88,21 @@ one file it writes is the report itself, saved to `review/` and added to your
 local Git excludes so it never shows up as a change. See the
 [CLI reference](/docs/cli#gx-review).
 
-## How PR summaries work
-
-On `git push`, the pre-push hook uploads a review bundle: the revisions, their
-hunks, and the linked sessions. When a pull request exists, gx Cloud
-generates a summary from that bundle plus the indexed codebase, and writes it
-into the PR description below your own text.
-
-The summary opens with a verdict — 🟢 **Quick scan**, 🟡 **Careful pass**, or
-🔴 **Deep review** — judged by blast radius: what the change can break,
-including code the diff never touches. Notable Changes each carry an
-`Attribution:` line naming the concrete source that informed them. See
-[Pull Requests](/docs/pull-requests).
-
 ## Why this speeds up review
 
-- The verdict tells a reviewer how much attention a PR needs before they open
-  the diff. A two-file rename that breaks downstream consumers gets 🔴; a
-  contained refactor gets 🟢.
-- Notable Changes point at the hunks that decide correctness, so the mechanical
-  rest can be skimmed instead of read line by line.
-- Session provenance answers "why is this here?" without a round-trip to the
-  author — the prompt, commands, and tests are part of the review context.
+- The verdict tells you whether the change is safe to ship before it becomes
+  someone else's problem.
+- A finding blocks only on agreement from independent reviewers plus
+  confirmation from a third, which is what makes a `NO-SHIP` worth listening to.
+- Session provenance answers "why is this here?" without a round-trip to whoever
+  wrote the prompt — when an index is configured, the prompt, commands, and
+  tests are part of the review context.
 - `gx review` catches findings before the PR exists, when they are cheapest to
   fix.
 
 ## Everything is still just Git
 
-The hooks publish normal Git branches and commits; sessions and metadata go to
-gx Cloud as a review bundle. Nothing about your repository becomes
-gx-specific — if you stop using gx tomorrow, your branches and
-commits remain ordinary Git.
+The hooks stamp plain `git commit` messages and never block a push. Your
+repository does not become gx-specific in any way that outlives the binary: stop
+using gx tomorrow and your branches, commits, and pull requests are ordinary
+Git. Session capture writes to `~/.gx` and goes nowhere else.

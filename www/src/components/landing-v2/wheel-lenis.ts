@@ -76,6 +76,10 @@ export function createLenisWheel({
   let coastStartedAt = 0;
   let coastDurationMs = COAST_DURATION_S * 1000;
 
+  // Declared here, assigned further down. The closures defined in between
+  // (settle, the coast handlers) capture this binding and read it once the
+  // instance exists, so it cannot collapse to a `const` at its use site.
+  // eslint-disable-next-line prefer-const
   let lenis: Lenis;
 
   const settle = () => {
