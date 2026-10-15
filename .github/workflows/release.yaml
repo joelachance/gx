@@ -90,6 +90,42 @@ jobs:
           test -f dist/cli/manifest.json
           test -f scripts/install.sh
 
+      # Says why a publish failed, inside the run that failed, before the
+      # upload masks it. A 401 from wrangler means one of three things -- wrong
+      # account id, a token without an R2 permission, or a token belonging to a
+      # different account -- and the Cloudflare API reports all three identically.
+      # `whoami` separates them, and it prints the token's actual permission
+      # list, which is the one thing a dashboard screenshot cannot confirm.
+      - name: Diagnose R2 credentials
+        if: ${{ always() && steps.version.outputs.version != '' }}
+        shell: bash
+        env:
+          GX_DOWNLOAD_BUCKET: ${{ vars.GX_DOWNLOAD_BUCKET }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "== values =="
+          # %q rather than a bare echo: a pasted secret carrying a trailing
+          # newline produces a URL Cloudflare answers 401 to, and it is invisible
+          # in every other way of printing it.
+          printf 'account id (escaped): %q\n' "$CLOUDFLARE_ACCOUNT_ID"
+          printf 'account id bytes:      %s\n' "$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | wc -c | tr -d ' ')"
+          printf 'account id is hex32:   %s\n' "$([[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] && echo yes || echo NO)"
+          printf 'token bytes:           %s\n' "$(printf '%s' "$CLOUDFLARE_API_TOKEN" | wc -c | tr -d ' ')"
+          printf 'token (escaped head):  %.12q...\n' "$CLOUDFLARE_API_TOKEN"
+
+          echo
+          echo "== wrangler whoami =="
+          wrangler whoami 2>&1 || echo "whoami failed"
+
+          echo
+          echo "== buckets visible to this token =="
+          wrangler r2 bucket list 2>&1 || echo "bucket list failed"
+
+          echo
+          echo "== custom domains on the bucket =="
+          wrangler r2 bucket domain list "$GX_DOWNLOAD_BUCKET" 2>&1 || echo "domain list failed"
+
       - name: Publish downloads to R2
         shell: bash
         env:
