@@ -143,7 +143,6 @@ function InstallCommand({
         className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-black/60 transition-colors hover:text-black"
       >
         <Icon className={icon} aria-hidden="true" />
-        {copied ? "Copied" : "Copy"}
       </button>
     </div>
   );
