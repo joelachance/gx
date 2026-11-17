@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/satoricorp/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/codereview"
 )
 
 // reviewJSONSchema names the shape of `gx review --json` output. Bump it when

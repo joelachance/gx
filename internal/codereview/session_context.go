@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/satoricorp/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/semantic"
 )
 
 const (

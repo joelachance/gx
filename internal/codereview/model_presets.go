@@ -58,7 +58,7 @@ type modelPreset struct {
 
 var modelPresets = map[string]modelPreset{
 	"anthropic": {
-		Why:       "Claude Haiku 4.5 and Claude Sonnet 4.6 review, Claude Haiku 4.5 verifies; needs ANTHROPIC_API_KEY",
+		Why:       "Claude Haiku 4.5 and Claude Sonnet 4.6 review, Claude Haiku 4.5 verifies; needs a Claude Code login or ANTHROPIC_API_KEY",
 		ReviewerA: defaultReviewModelA,
 		ReviewerB: defaultReviewModelB,
 		Judge:     defaultJudgeModel,
@@ -92,7 +92,7 @@ func activeModelPreset() modelPreset {
 	if preset, ok := modelPresets[strings.ToLower(strings.TrimSpace(os.Getenv("GX_REVIEW_MODELS")))]; ok {
 		return preset
 	}
-	if _, ok := anthropicCredentialFromEnv(); !ok && strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
+	if _, ok := anthropicCredentialFromEnv(); !ok && !claudeCodePreferred() && strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
 		return modelPresets["openai"]
 	}
 	return modelPresets["anthropic"]

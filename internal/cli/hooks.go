@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/hooks"
 )
 
 func newInternalHooksCommand(ctx context.Context) *cobra.Command {

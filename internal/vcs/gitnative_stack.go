@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func (s *Service) loadGitStackReadModel(ctx context.Context, repo RepoInfo) (stackReadModel, error) {

@@ -257,7 +257,7 @@ const GX_REVIEW: Line[] = [
     s("└  ", "rail"),
     s("gx:recommended v2", "dim"),
     s(" + 4 rules from REVIEW.md · report ", "rail"),
-    s("https://gx.run/r/satoricorp/gx/8f2a19c", "command"),
+    s("https://gx.run/r/joelachance/gx/8f2a19c", "command"),
   ],
 ];
 

@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 const (

@@ -3,7 +3,7 @@ package semantic
 import (
 	"testing"
 
-	"github.com/satoricorp/gx/internal/reviewbundle"
+	"github.com/joelachance/gx/internal/reviewbundle"
 )
 
 func TestBuildRepositoryChunksIndexesSourceFiles(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // requireLiveRetrievalCredentials skips unless real keys are present. These

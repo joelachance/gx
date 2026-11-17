@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/agentprovenance"
-	"github.com/satoricorp/gx/internal/reviewsource"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
-	"github.com/satoricorp/gx/internal/version"
+	"github.com/joelachance/gx/internal/agentprovenance"
+	"github.com/joelachance/gx/internal/reviewsource"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/version"
 )
 
 const SchemaVersion = 2

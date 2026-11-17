@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/authoring"
-	"github.com/satoricorp/gx/internal/gxconfig"
-	"github.com/satoricorp/gx/internal/vcs"
-	"github.com/satoricorp/gx/internal/version"
+	"github.com/joelachance/gx/internal/authoring"
+	"github.com/joelachance/gx/internal/gxconfig"
+	"github.com/joelachance/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/version"
 )
 
 func NewRoot(ctx context.Context) *cobra.Command {

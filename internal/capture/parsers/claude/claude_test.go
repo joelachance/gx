@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/parsers/claude"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/parsers/claude"
 )
 
 func TestParseClaude_Golden(t *testing.T) {

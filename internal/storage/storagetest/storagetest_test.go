@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/storage/storagetest"
+	"github.com/joelachance/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage/storagetest"
 )
 
 // TestDriftedRepoIdentityReproducesTheLiveTwoRowState proves the shape actually

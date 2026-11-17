@@ -11,8 +11,9 @@ import (
 	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/inference"
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/inference"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 func enableColor() bool {
@@ -100,7 +101,10 @@ func printRootIntro(out io.Writer) {
 func rootInferenceStatusLine() string {
 	creds, ok := inference.Resolve()
 	if !ok {
-		return danger("●") + " " + muted("API Key required. Set ANTHROPIC_API_KEY or OPENAI_API_KEY to review with a model.")
+		if codereview.ClaudeCodeAvailable() {
+			return success("●") + " " + value("Using Claude Code: your Claude login")
+		}
+		return danger("●") + " " + muted("No model. Sign in to Claude Code, or set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
 	}
 	return success("●") + " " + value("Using "+creds.Provider+": "+maskedAPIKey(creds.APIKey))
 }

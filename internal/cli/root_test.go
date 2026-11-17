@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 var errTestComposeRepair = errors.New("compose repair unavailable")

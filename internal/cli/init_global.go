@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/hooks"
 )
 
 // runGlobalInit installs the machine-wide gx lifecycle hooks. It does not need

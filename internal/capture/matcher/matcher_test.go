@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/exclude"
-	"github.com/satoricorp/gx/internal/capture/matcher"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/exclude"
+	"github.com/joelachance/gx/internal/capture/matcher"
 )
 
 func TestMatcher_Tier1Exact(t *testing.T) {

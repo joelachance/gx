@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture/repobind"
+	"github.com/joelachance/gx/internal/capture/repobind"
 )
 
 // A session run in a linked worktree belongs to the repository, not to the

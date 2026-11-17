@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture"
 )
 
 // Parser normalizes one agent tool's session JSONL into SessionEvents.

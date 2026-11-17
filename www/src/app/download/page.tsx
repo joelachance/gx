@@ -45,7 +45,7 @@ export default function DownloadPage() {
         Then run <code className="text-zinc-950 dark:text-zinc-100">gx init</code> in
         a repository. Prefer GitHub Releases?{" "}
         <a
-          href="https://github.com/satoricorp/gx/releases"
+          href="https://github.com/joelachance/gx/releases"
           className="underline underline-offset-2 hover:text-zinc-950 dark:hover:text-zinc-100"
         >
           The same archives are there

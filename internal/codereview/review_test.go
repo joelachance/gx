@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // TestMain disables the model paths and cuts the package off from the network.

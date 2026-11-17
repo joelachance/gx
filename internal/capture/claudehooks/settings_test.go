@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture/claudehooks"
+	"github.com/joelachance/gx/internal/capture/claudehooks"
 )
 
 func TestMergeSettingsCreatesHooks(t *testing.T) {
