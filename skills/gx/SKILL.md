@@ -146,7 +146,7 @@ agent client.
 | Symptom | Fix |
 | --- | --- |
 | `git commit` says "nothing to commit" | Nothing staged — run `git add <files>` first |
-| `gx review cannot run` / "no model API key is set" | Ask the user to set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, then retry |
+| `gx review cannot run` / "no model is available" | Ask the user to sign in to Claude Code (`claude`), or set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, then retry |
 | Error mentions `gx auth login` | The installed gx is an older build that expects a gx Cloud; ask the user to reinstall gx from source or a GitHub release |
 | `git push` fails: no `origin` / not a GitHub remote | `git remote -v`; point `origin` at GitHub, or skip publishing |
 | `git push` rejected (remote moved) | `git pull --rebase`, then retry `git push` |

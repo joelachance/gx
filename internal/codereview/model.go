@@ -100,11 +100,18 @@ func transportForModel(model string) (modelTransport, error) {
 		return newOpenAITransport(model)
 	}
 	cred, ok := anthropicCredentialFromEnv()
+	if !ok || claudeCodePreferred() {
+		// No key, or the reviewer asked for their Claude login: run the model
+		// through Claude Code when it is installed.
+		if binary, found := claudeCodeBinary(); found {
+			return newClaudeCodeTransport(binary), nil
+		}
+	}
 	if !ok {
 		if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" {
-			return nil, fmt.Errorf("no model API key is set: set ANTHROPIC_API_KEY to review with Claude, or OPENAI_API_KEY to review with OpenAI models")
+			return nil, fmt.Errorf("no model is available: sign in to Claude Code (`claude`) to review on your Claude subscription, set ANTHROPIC_API_KEY to review with Claude on the API, or set OPENAI_API_KEY to review with OpenAI models")
 		}
-		return nil, fmt.Errorf("%s runs on the Anthropic API, which needs ANTHROPIC_API_KEY; unset GX_REVIEW_MODELS and the per-leg model overrides to review with OpenAI models instead", apiModelName(model))
+		return nil, fmt.Errorf("%s needs Claude Code (`claude`) on PATH or ANTHROPIC_API_KEY; unset GX_REVIEW_MODELS and the per-leg model overrides to review with OpenAI models instead", apiModelName(model))
 	}
 	return newAnthropicTransport(cred), nil
 }
