@@ -1,11 +1,13 @@
 # Review-knowledge sources: the public documents behind `gx review --deep`.
 #
-# gx review retrieves supporting guidance from a hosted index built from the
-# sources below. The fetched documents themselves are third-party material
+# These are the sources the review-knowledge corpus was built from. That corpus
+# was hosted by gx Cloud, which no longer exists, so no review retrieves from it
+# today: the retriever is off unless GX_REVIEW_KNOWLEDGE_NAMESPACE names a
+# TurboPuffer namespace you built yourself. The fetched documents themselves are third-party material
 # under their publishers' own terms, so they are not redistributed in this
 # repository; only this list of where they live is. The fetch, chunk and index
-# pipeline that turned them into the hosted index is not part of this
-# repository either.
+# pipeline that turned them into that index is not part of this repository
+# either.
 #
 # Field defaults: authority: 2, precedence_group: null, superseded_by: null,
 # historical: false, crawl_depth: 0, fetch: html, license: verify.

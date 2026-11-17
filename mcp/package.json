@@ -7,7 +7,7 @@
   "homepage": "https://gx.run",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/satoricorp/gx.git",
+    "url": "git+https://github.com/joelachance/gx.git",
     "directory": "mcp"
   },
   "bin": {

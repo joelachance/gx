@@ -298,7 +298,7 @@ export function LandingV2() {
 
           <InstallCommand size="full" className="mt-7" />
           <a
-            href="https://github.com/satoricorp/gx"
+            href="https://github.com/joelachance/gx"
             className="mt-3 inline-flex text-zinc-300 transition-colors hover:text-white"
             aria-label="Source on GitHub"
           >

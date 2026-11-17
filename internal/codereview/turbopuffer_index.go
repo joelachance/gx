@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/satoricorp/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/semantic"
 )
 
 // indexProbe describes a TurboPuffer namespace well enough to query it without

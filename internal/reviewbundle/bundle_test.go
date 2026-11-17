@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/reviewsource"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/reviewsource"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 func TestBuildPushIncludesDemuxEvidenceContext(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/satoricorp/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/codereview"
 )
 
 // accordionFixture is the checkout-retry shape: one blocking finding both

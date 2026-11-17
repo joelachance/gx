@@ -9,7 +9,7 @@ import (
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 // Shared code-window renderers for any report. The review renderer and the

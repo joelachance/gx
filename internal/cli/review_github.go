@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/github"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/github"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 const reviewCommentMarker = "<!-- gx review summary -->"

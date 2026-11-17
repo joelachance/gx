@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/matcher"
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/matcher"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 // runCapture is a seam for tests that need one specific orchestrator outcome —

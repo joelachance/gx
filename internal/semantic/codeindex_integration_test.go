@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // requireLiveIndexingCredentials skips unless real keys are present. Nothing in

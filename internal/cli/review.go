@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/vcs"
 	"github.com/spf13/cobra"
 )
 
@@ -67,8 +67,10 @@ the verification model confirmed it — one model's opinion is advisory. Under a
 terminal the report opens as a menu; piped or in CI it prints in full. --json
 and --md are the machine and PR-comment shapes.
 
-gx review needs ANTHROPIC_API_KEY or OPENAI_API_KEY, and the panel follows the
-key: Claude Haiku 4.5 and Claude Sonnet 4.6 with an Anthropic key, GPT-5.6 Luna
+gx review needs a Claude Code login, ANTHROPIC_API_KEY or OPENAI_API_KEY. With
+no Anthropic key it runs Claude through Claude Code (claude -p) on your Claude
+subscription; GX_REVIEW_CLAUDE_CODE=1 does that even when a key is set, and =0
+never does. The panel is Claude Haiku 4.5 and Claude Sonnet 4.6, or GPT-5.6 Luna
 and GPT-5.6 Terra with only an OpenAI key. GX_REVIEW_MODELS=anthropic or
 =openai picks one when both are set. Any single slot's env var
 (GX_REVIEW_MODEL_A/_B, GX_REVIEW_JUDGE_MODEL, GX_REVIEW_RULE_SORT_MODEL) wins

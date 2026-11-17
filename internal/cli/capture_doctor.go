@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/hooks"
-	cursoringest "github.com/satoricorp/gx/internal/ingest/cursor"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/hooks"
+	cursoringest "github.com/joelachance/gx/internal/ingest/cursor"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 type captureDoctorJSON struct {

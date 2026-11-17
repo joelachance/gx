@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture"
 )
 
 // The change this exists for: an agent that edits with a heredoc, `sed -i` or

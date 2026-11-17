@@ -12,10 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cursoringest "github.com/satoricorp/gx/internal/ingest/cursor"
-	"github.com/satoricorp/gx/internal/semantic"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
+	cursoringest "github.com/joelachance/gx/internal/ingest/cursor"
+	"github.com/joelachance/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 func newDoctorCommand(ctx context.Context) *cobra.Command {

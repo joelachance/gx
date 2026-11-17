@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/hooks"
 )
 
 func TestInstallPrePushHook(t *testing.T) {

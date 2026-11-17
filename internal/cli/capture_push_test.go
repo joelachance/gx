@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/hooks"
 )
 
 // TestCapturePushSurfacesHookError pins the diagnostic contract of the push

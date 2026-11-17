@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/capture/redact"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/capture/redact"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 // Result summarizes one reparse run.

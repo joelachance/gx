@@ -8,8 +8,8 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 // The accordion: the interactive shape of the review report.

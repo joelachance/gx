@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 func TestInstallLifecycleHooksUsesGitHooksDir(t *testing.T) {

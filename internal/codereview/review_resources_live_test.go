@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/semantic"
 )
 
 func liveReviewResourceRetriever(t *testing.T) ReviewResourceRetriever {
