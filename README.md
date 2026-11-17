@@ -86,15 +86,15 @@ panel follows it:
 
 | You have | Reviewers | Verifier | Runs on |
 | --- | --- | --- | --- |
-| Claude Code signed in, no Anthropic key | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 | Claude Code (`claude -p`), your Claude subscription |
+| Claude Code signed in, no Anthropic key (an OpenAI key may be set) | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 | Claude Code (`claude -p`), your Claude subscription |
 | `ANTHROPIC_API_KEY` | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 | Anthropic API |
-| `OPENAI_API_KEY` only | GPT-5.6 Luna and GPT-5.6 Terra | GPT-5.6 Luna | OpenAI API |
+| `OPENAI_API_KEY`, no Anthropic key and no Claude Code | GPT-5.6 Luna and GPT-5.6 Terra | GPT-5.6 Luna | OpenAI API |
 
 An Anthropic key wins over Claude Code when both are there.
 `GX_REVIEW_CLAUDE_CODE=1` uses your Claude login anyway, and `=0` never uses
 it. Through Claude Code each model call is a single completion with tools, MCP
-servers, settings and session saving switched off. With an OpenAI key and no
-Anthropic key the OpenAI panel runs unless `GX_REVIEW_MODELS=anthropic` is set.
+servers, settings and session saving switched off. A signed-in Claude Code
+also wins over an OpenAI key; `GX_REVIEW_MODELS=openai` picks the OpenAI panel.
 
 With both keys set the Claude panel runs; `GX_REVIEW_MODELS=openai` (or
 `=anthropic`) picks one explicitly. `ANTHROPIC_AUTH_TOKEN` works in place of an

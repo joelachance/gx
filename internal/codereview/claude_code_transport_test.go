@@ -56,6 +56,35 @@ func TestClaudeModelsFallBackToClaudeCodeWithoutAKey(t *testing.T) {
 	}
 }
 
+// A signed-in Claude Code beats an OpenAI-only key: the subscription is what a
+// reviewer with both would expect to be used.
+func TestClaudeCodeWinsOverAnOpenAIOnlyKey(t *testing.T) {
+	fakeClaudeOnPath(t)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv(claudeCodeEnv, "")
+
+	if a := activeModelPreset().ReviewerA; modelUsesOpenAI(a) {
+		t.Fatalf("panel reviewer A = %q, want Claude through Claude Code", a)
+	}
+	if !ClaudeCodeActive() {
+		t.Fatal("ClaudeCodeActive() = false with Claude Code on PATH and no Anthropic key")
+	}
+
+	t.Setenv("GX_REVIEW_MODELS", "openai")
+	if ClaudeCodeActive() || !modelUsesOpenAI(activeModelPreset().ReviewerA) {
+		t.Fatal("GX_REVIEW_MODELS=openai must still pick the OpenAI panel")
+	}
+
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv(claudeCodeEnv, "0")
+	if !modelUsesOpenAI(activeModelPreset().ReviewerA) {
+		t.Fatalf("with %s=0 an OpenAI-only key must pick the OpenAI panel", claudeCodeEnv)
+	}
+}
+
 func isAnthropicTransport(t modelTransport) bool  { _, ok := t.(*anthropicTransport); return ok }
 func isClaudeCodeTransport(t modelTransport) bool { _, ok := t.(*claudeCodeTransport); return ok }
 
