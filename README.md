@@ -60,7 +60,9 @@ Inside your repo:
 gx init
 ```
 
-Give `gx review` a model, with your own API key:
+Give `gx review` a model. If [Claude Code](https://claude.com/claude-code) is
+installed and signed in, there is nothing to set: gx runs its reviewers through
+`claude -p` on your Claude subscription. Otherwise use an API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY=sk-...
@@ -79,12 +81,20 @@ git push
 
 ## Models
 
-`gx review` and `gx enhance` need one key, and the review panel follows it:
+`gx review` and `gx enhance` need one way to reach a model, and the review
+panel follows it:
 
-| Key set | Reviewers | Verifier |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 |
-| `OPENAI_API_KEY` only | GPT-5.6 Luna and GPT-5.6 Terra | GPT-5.6 Luna |
+| You have | Reviewers | Verifier | Runs on |
+| --- | --- | --- | --- |
+| Claude Code signed in, no Anthropic key | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 | Claude Code (`claude -p`), your Claude subscription |
+| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 and Claude Sonnet 4.6 | Claude Haiku 4.5 | Anthropic API |
+| `OPENAI_API_KEY` only | GPT-5.6 Luna and GPT-5.6 Terra | GPT-5.6 Luna | OpenAI API |
+
+An Anthropic key wins over Claude Code when both are there.
+`GX_REVIEW_CLAUDE_CODE=1` uses your Claude login anyway, and `=0` never uses
+it. Through Claude Code each model call is a single completion with tools, MCP
+servers, settings and session saving switched off. With an OpenAI key and no
+Anthropic key the OpenAI panel runs unless `GX_REVIEW_MODELS=anthropic` is set.
 
 With both keys set the Claude panel runs; `GX_REVIEW_MODELS=openai` (or
 `=anthropic`) picks one explicitly. `ANTHROPIC_AUTH_TOKEN` works in place of an
@@ -92,7 +102,7 @@ Anthropic key.
 
 Any single slot can be overridden: `GX_REVIEW_MODEL_A`, `GX_REVIEW_MODEL_B`,
 `GX_REVIEW_JUDGE_MODEL` and `GX_REVIEW_RULE_SORT_MODEL` take a model ID such as
-`claude-opus-5-5` or `gpt-5.6-sol`. Claude models run on the Anthropic API and
+`claude-opus-5-5` or `gpt-5.6-sol`. Claude models run on Claude Code or the Anthropic API and
 everything else on the OpenAI API, so a panel can mix the two.
 `GX_REVIEW_MODEL_B=off` reviews with one model, and `GX_REVIEW_AI=0` runs only
 the deterministic checks and your project's own linters and tests.
@@ -217,8 +227,8 @@ secret formats from session events as it does.
 What leaves your machine, and only with credentials you set:
 
 - **Reviews.** `gx review` and `gx enhance` send the change and its review
-  context to the model provider for each model: the Anthropic API or the
-  OpenAI API.
+  context to the model provider for each model: Anthropic (through Claude
+  Code or the API) or the OpenAI API.
 - **Code index.** With TurboPuffer and OpenAI keys set, `gx index` and review
   send code chunks to OpenAI for embeddings and to TurboPuffer for storage and
   search.

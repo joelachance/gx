@@ -227,7 +227,7 @@ func TestALegWithoutItsKeyNamesTheKey(t *testing.T) {
 	if reason := NoReviewerReason(); reason != "" {
 		t.Fatalf("NoReviewerReason() = %q with the OpenAI leg available, want a reviewer", reason)
 	}
-	if reason := ReviewerUnavailableReason(reviewerFromEnv()); !strings.Contains(reason, "claude-sonnet-4-6 runs on the Anthropic API, which needs ANTHROPIC_API_KEY") {
+	if reason := ReviewerUnavailableReason(reviewerFromEnv()); !strings.Contains(reason, "claude-sonnet-4-6 needs Claude Code (`claude`) on PATH or ANTHROPIC_API_KEY") {
 		t.Fatalf("ReviewerUnavailableReason() = %q, want the Claude leg's missing key named", reason)
 	}
 }
