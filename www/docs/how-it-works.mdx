@@ -40,10 +40,12 @@ Agent-written code breaks two of Git's assumptions:
 This is the honest boundary, and it is worth being explicit about it.
 
 Capturing a session needs nothing. Reading one back during `gx review` needs an
-index to search, and gx searches a vector store. With no index configured, the
-session, code-index, and review-knowledge retrievers report themselves
-**disabled** and the review runs without them — no error, no warning banner,
-just less context than a configured install sees.
+index to search, and gx searches a vector store. `gx index` writes code to that
+store and nothing else: this build has no step that indexes captured sessions,
+so they stay in `~/.gx` and a review does not read them yet. The shared
+review-knowledge corpus went away with gx Cloud; that retriever stays off unless
+`GX_REVIEW_KNOWLEDGE_NAMESPACE` names a corpus you indexed yourself. A source
+that is unavailable is listed as such in the review, which then runs without it.
 
 So in a stock local install:
 
@@ -51,19 +53,22 @@ So in a stock local install:
 | --- | --- |
 | The diff, the working tree, the repository | Always |
 | Language servers, linters, test suites it already knows how to run | Always |
-| Captured sessions, indexed code, shared review knowledge | Only with an index configured |
+| Built-in rules and your repo's `REVIEW.md` | Always |
+| Indexed code | Only after `gx index` |
+| Review knowledge | Only with your own corpus configured |
+| Captured sessions | Not yet: captured locally, not read by review |
 
 Everything the review *decides* is available either way. What an index buys is
-recall: the ability to answer "where else does this pattern appear" and "what
-did we decide last time about this file". `gx index` builds one, and it needs
+recall: the ability to answer "where else does this pattern appear". `gx index`
+builds one, and it needs
 `OPENAI_API_KEY` plus a vector store to write to.
 
 ## How gx review works
 
 `gx review` reads the current change — a dirty working tree, or the branch's
 commits against its base — and reviews it with two independent AI reviewers
-plus repo context: the indexed codebase, captured sessions, review history, and
-your repo's review policy. A judge model then verifies and dedupes the
+plus repo context: the indexed codebase when there is one, the built-in rules,
+and your repo's review policy. A judge model then verifies and dedupes the
 findings. Alongside them it runs what the project already has — the compiler,
 the linter, the test suite, a secret scan over added lines, and the dependency
 audits when a manifest moved — and reports those results as evidence rather
