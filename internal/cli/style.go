@@ -99,11 +99,11 @@ func printRootIntro(out io.Writer) {
 }
 
 func rootInferenceStatusLine() string {
+	if codereview.ClaudeCodeActive() {
+		return success("●") + " " + value("Using Claude Code: your Claude login")
+	}
 	creds, ok := inference.Resolve()
 	if !ok {
-		if codereview.ClaudeCodeAvailable() {
-			return success("●") + " " + value("Using Claude Code: your Claude login")
-		}
 		return danger("●") + " " + muted("No model. Sign in to Claude Code, or set ANTHROPIC_API_KEY or OPENAI_API_KEY.")
 	}
 	return success("●") + " " + value("Using "+creds.Provider+": "+maskedAPIKey(creds.APIKey))
