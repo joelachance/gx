@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // TestNewRepoIsAMainCheckout pins the identity a main checkout has: its git dir

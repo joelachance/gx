@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/semantic"
 )
 
 // TestMissingIndexWarningsCarryTheirRemedy pins the property that makes these

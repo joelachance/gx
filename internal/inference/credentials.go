@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 const fileName = "inference.json"

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 // RecordGitCommit records metadata for a git commit that already exists.

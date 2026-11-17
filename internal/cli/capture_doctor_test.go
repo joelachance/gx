@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func TestPrintCaptureDoctorHumanOutputUsesCompactRows(t *testing.T) {

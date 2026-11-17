@@ -11,9 +11,9 @@ import (
 	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/inference"
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/inference"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 func enableColor() bool {

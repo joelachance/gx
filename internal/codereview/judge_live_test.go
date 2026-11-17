@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // liveJudgeRequest is the fixed three-candidate probe the live tests share: one

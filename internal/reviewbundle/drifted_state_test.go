@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/storage/storagetest"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage/storagetest"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 // TestBuildPushReadsTheDriftedRowThePushWroteTo is the bundle-side test that

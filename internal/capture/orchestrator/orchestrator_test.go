@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/matcher"
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/capture/redact"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/matcher"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/capture/redact"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func TestOrchestrator_StagesExtract(t *testing.T) {

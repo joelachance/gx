@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/semantic"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 // newIndexCommand exposes repository indexing as a command so an index can be

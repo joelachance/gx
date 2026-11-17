@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture"
 )
 
 // HunkOptions configures commit hunk extraction.

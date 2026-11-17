@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/codereview"
 )
 
 // newReviewGateRepo builds a repo whose work is committed and whose tree is

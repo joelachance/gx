@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
 )
 
 // An agent works in a linked worktree and the push runs from the main

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxconfig"
+	"github.com/joelachance/gx/internal/gxconfig"
 )
 
 func setupStagedCommitRepo(t *testing.T, defaultBranch string) (*Service, string) {

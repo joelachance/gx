@@ -4,7 +4,7 @@ set dotenv-load := true
 repo_root := `pwd`
 
 # `just build` / `just install` stamp the version; VERSION defaults to dev.
-gx_ldflags := "-X github.com/satoricorp/gx/internal/version.Version=${VERSION:-dev}"
+gx_ldflags := "-X github.com/joelachance/gx/internal/version.Version=${VERSION:-dev}"
 
 build:
   go build -ldflags "{{gx_ldflags}}" -o gx ./cmd/gx

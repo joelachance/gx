@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 // PrepareCommitMsgOptions configures the prepare-commit-msg hook handler.

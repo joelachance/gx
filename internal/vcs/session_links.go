@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture/matcher"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/version"
+	"github.com/joelachance/gx/internal/capture/matcher"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/version"
 )
 
 // maxSessionsPerChange caps how many sessions one change may link. A single

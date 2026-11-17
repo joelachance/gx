@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // TestMain cuts this package off from the network, and from the developer's

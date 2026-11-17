@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/gxtest"
-	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/storage"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/storage"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 const coldStartConversation = "11111111-2222-3333-4444-555555555555"
