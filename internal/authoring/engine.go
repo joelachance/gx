@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/vcs"
 )
 
 type InitOptions = vcs.InitOptions

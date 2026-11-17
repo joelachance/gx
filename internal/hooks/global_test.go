@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/hooks"
 )
 
 // isolateGlobalGitConfig points HOME, GX_HOME and git's global/system config

@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/satoricorp/gx/internal/capture"
-	"github.com/satoricorp/gx/internal/capture/claudehooks"
-	"github.com/satoricorp/gx/internal/capture/orchestrator"
-	"github.com/satoricorp/gx/internal/capture/reparse"
-	"github.com/satoricorp/gx/internal/hooks"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture/claudehooks"
+	"github.com/joelachance/gx/internal/capture/orchestrator"
+	"github.com/joelachance/gx/internal/capture/reparse"
+	"github.com/joelachance/gx/internal/hooks"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func newCaptureCommand(ctx context.Context) *cobra.Command {

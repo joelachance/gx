@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/satoricorp/gx/internal/reviewbundle"
+	"github.com/joelachance/gx/internal/reviewbundle"
 )
 
 type Chunk struct {

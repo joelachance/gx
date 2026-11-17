@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/cli"
-	"github.com/satoricorp/gx/internal/gxconfig"
+	"github.com/joelachance/gx/internal/cli"
+	"github.com/joelachance/gx/internal/gxconfig"
 )
 
 func TestRootRemovesShortcutCommands(t *testing.T) {

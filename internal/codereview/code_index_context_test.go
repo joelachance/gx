@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/semantic"
+	"github.com/joelachance/gx/internal/semantic"
 )
 
 // fakeIndexStore serves probes and query rows from memory so retrieval, fusion

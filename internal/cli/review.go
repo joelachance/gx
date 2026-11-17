@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/vcs"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/vcs"
 	"github.com/spf13/cobra"
 )
 

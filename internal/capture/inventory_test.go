@@ -3,7 +3,7 @@ package capture_test
 import (
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture"
 )
 
 func TestInventoryUnknownPaths(t *testing.T) {

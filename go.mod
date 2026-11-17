@@ -1,4 +1,4 @@
-module github.com/satoricorp/gx
+module github.com/joelachance/gx
 
 go 1.25.8
 

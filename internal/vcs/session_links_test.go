@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/capture/matcher"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/capture/matcher"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func newSessionLinkStore(t *testing.T) (*storage.Store, *sql.DB, context.Context) {

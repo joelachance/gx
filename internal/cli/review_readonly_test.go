@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/codereview"
 	"time"
 
-	"github.com/satoricorp/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/gxtest"
 )
 
 // staleGitStatCache backdates the working tree's mtimes so the index's stat

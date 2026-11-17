@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satoricorp/gx/internal/reviewbundle"
+	"github.com/joelachance/gx/internal/reviewbundle"
 )
 
 // BuildRepositoryChunks chunks every source file in a bundle's checkout.

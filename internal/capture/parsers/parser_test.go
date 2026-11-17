@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/satoricorp/gx/internal/capture"
+	"github.com/joelachance/gx/internal/capture"
 )
 
 func TestDiscoverFindsCursorAgentTranscripts(t *testing.T) {

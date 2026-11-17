@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func TestCleanupStaleStacksMarksMissingBookmarkStacksClosed(t *testing.T) {

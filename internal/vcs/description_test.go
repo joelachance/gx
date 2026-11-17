@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 func TestValidateCommitMessage(t *testing.T) {

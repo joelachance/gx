@@ -12,7 +12,7 @@ cd "$repo_root"
 if [[ -z "$version" ]]; then
   version="$(git rev-parse --short=12 HEAD 2>/dev/null || echo dev)"
 fi
-GX_LDFLAGS="-X github.com/satoricorp/gx/internal/version.Version=${version}"
+GX_LDFLAGS="-X github.com/joelachance/gx/internal/version.Version=${version}"
 
 case "${goos}/${goarch}" in
   darwin/arm64) bun_target="${BUN_TARGET:-bun-darwin-arm64}" ;;

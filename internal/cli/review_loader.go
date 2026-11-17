@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
 
-	"github.com/satoricorp/gx/internal/codereview"
-	"github.com/satoricorp/gx/internal/termstyle"
+	"github.com/joelachance/gx/internal/codereview"
+	"github.com/joelachance/gx/internal/termstyle"
 )
 
 // useInteractiveTerminal reports whether both ends of the pipe are a real

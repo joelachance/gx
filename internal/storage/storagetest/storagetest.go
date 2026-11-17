@@ -42,8 +42,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/satoricorp/gx/internal/gxtest"
-	"github.com/satoricorp/gx/internal/storage"
+	"github.com/joelachance/gx/internal/gxtest"
+	"github.com/joelachance/gx/internal/storage"
 )
 
 // CommitSelfReportSessionID is the fossil session id left behind by the retired

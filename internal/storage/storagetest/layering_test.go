@@ -30,7 +30,7 @@ import (
 // if storage ever imported vcs, storagetest would inherit it.
 func TestHarnessLayering(t *testing.T) {
 	root := repoRoot(t)
-	const prefix = "github.com/satoricorp/gx/"
+	const prefix = "github.com/joelachance/gx/"
 
 	for _, tc := range []struct {
 		pkg     string
