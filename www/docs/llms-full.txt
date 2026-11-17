@@ -46,10 +46,12 @@ Agent-written code breaks two of Git's assumptions:
 This is the honest boundary, and it is worth being explicit about it.
 
 Capturing a session needs nothing. Reading one back during `gx review` needs an
-index to search, and gx searches a vector store. With no index configured, the
-session, code-index, and review-knowledge retrievers report themselves
-**disabled** and the review runs without them — no error, no warning banner,
-just less context than a configured install sees.
+index to search, and gx searches a vector store. `gx index` writes code to that
+store and nothing else: this build has no step that indexes captured sessions,
+so they stay in `~/.gx` and a review does not read them yet. The shared
+review-knowledge corpus went away with gx Cloud; that retriever stays off unless
+`GX_REVIEW_KNOWLEDGE_NAMESPACE` names a corpus you indexed yourself. A source
+that is unavailable is listed as such in the review, which then runs without it.
 
 So in a stock local install:
 
@@ -57,19 +59,22 @@ So in a stock local install:
 | --- | --- |
 | The diff, the working tree, the repository | Always |
 | Language servers, linters, test suites it already knows how to run | Always |
-| Captured sessions, indexed code, shared review knowledge | Only with an index configured |
+| Built-in rules and your repo's `REVIEW.md` | Always |
+| Indexed code | Only after `gx index` |
+| Review knowledge | Only with your own corpus configured |
+| Captured sessions | Not yet: captured locally, not read by review |
 
 Everything the review *decides* is available either way. What an index buys is
-recall: the ability to answer "where else does this pattern appear" and "what
-did we decide last time about this file". `gx index` builds one, and it needs
+recall: the ability to answer "where else does this pattern appear". `gx index`
+builds one, and it needs
 `OPENAI_API_KEY` plus a vector store to write to.
 
 ## How gx review works
 
 `gx review` reads the current change — a dirty working tree, or the branch's
 commits against its base — and reviews it with two independent AI reviewers
-plus repo context: the indexed codebase, captured sessions, review history, and
-your repo's review policy. A judge model then verifies and dedupes the
+plus repo context: the indexed codebase when there is one, the built-in rules,
+and your repo's review policy. A judge model then verifies and dedupes the
 findings. Alongside them it runs what the project already has — the compiler,
 the linter, the test suite, a secret scan over added lines, and the dependency
 audits when a manifest moved — and reports those results as evidence rather
@@ -132,7 +137,7 @@ curl -fsSL https://download.gx.run/install.sh | sh
 
 That puts `gx`, `gx-mcp`, and shell completions in `~/.local/bin`, and verifies
 the archive against its published checksum first. To build from source instead,
-clone [the repository](https://github.com/satoricorp/gx) and run `just install`.
+clone [the repository](https://github.com/joelachance/gx) and run `just install`.
 
 Review runs a model, so it needs **your** key:
 
@@ -287,8 +292,8 @@ gx review --base origin/main --md             # markdown report, e.g. for a PR c
 ```
 
 Reviews the current change and ends in a ship / no-ship verdict. Two
-independent reviewers read the change against your indexed codebase, captured
-sessions, review history, and your repo's review policy; a verification model
+independent reviewers read the change against your indexed codebase (when
+there is one), the built-in rules, and your repo's review policy; a verification model
 then confirms and dedupes what they found. This can be run in the terminal or
 via [MCP](/docs/mcp).
 
@@ -327,8 +332,7 @@ to advisory.
 | `--md` | print the report as markdown — the PR-comment body |
 | `--max-findings <n>` | cap how many recommendations the review reports |
 | `--fail-on <level>` | exit non-zero when findings at or above this level survive (default `blocking`) |
-| `--no-comment` | skip posting the PR review comment, but still record review history |
-| `--no-publish` | skip both the PR review comment and the review history |
+| `--no-comment` | skip posting the PR review comment |
 | `--client <name>` | label the surface invoking this review: `cli`, `mcp`, `skill`, `slash-gx` |
 
 ### What gets reviewed
@@ -381,7 +385,7 @@ Every run that inspected code also saves its full JSON report to
 The gate is on by default — no opt-in flag needed:
 
 ```bash
-gx review --base origin/main --no-publish
+gx review --base origin/main --no-comment
 ```
 
 `--fail-on` sets the threshold:
@@ -404,7 +408,7 @@ Exit codes:
 | `4` | nothing was reviewed — a gate should not pass without inspecting code |
 | `5` | degraded — the review ran incomplete, so a pass would be unearned |
 
-Pair with `--no-publish` so CI never posts PR comments, and `--json` to parse
+Pair with `--no-comment` so CI never posts PR comments, and `--json` to parse
 findings yourself.
 
 ### Swapping the model panel

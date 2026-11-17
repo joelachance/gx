@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security issues privately through GitHub:
-[open a private vulnerability report](https://github.com/satoricorp/gx/security/advisories/new).
+[open a private vulnerability report](https://github.com/joelachance/gx/security/advisories/new).
 Do not open a public issue, discussion, or pull request for a vulnerability.
 
 Include what you found, how to reproduce it, and the gx version (`gx version`).

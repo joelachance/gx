@@ -27,4 +27,4 @@ environment, not your shell's. `GX_BINARY` points it at a specific `gx`.
 `gx_review` is read-only: it never initializes a repository and never comments
 on a pull request.
 
-Everything else is in the main README: https://github.com/satoricorp/gx#readme
+Everything else is in the main README: https://github.com/joelachance/gx#readme

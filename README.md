@@ -2,11 +2,19 @@
   <img src="docs/gx-chrome-logo-dark.png" alt="gx" width="420" />
 </p>
 
-SOTA code review that uses your session context.
+<p align="center">
+  <a href="https://github.com/joelachance/gx/actions/workflows/ci.yml"><img src="https://github.com/joelachance/gx/actions/workflows/ci.yml/badge.svg?branch=main" alt="ci: build, vet and tests" /></a>
+  <a href="https://github.com/joelachance/gx/actions/workflows/mcp.yml"><img src="https://github.com/joelachance/gx/actions/workflows/mcp.yml/badge.svg?branch=main" alt="mcp tests" /></a>
+  <a href="https://github.com/joelachance/gx/actions/workflows/release.yaml"><img src="https://github.com/joelachance/gx/actions/workflows/release.yaml/badge.svg" alt="release" /></a>
+  <a href="https://github.com/joelachance/gx/releases/latest"><img src="https://img.shields.io/github/v/release/joelachance/gx" alt="latest release" /></a>
+</p>
 
+Local code review for changes written with AI agents.
 
-With traditional code review, developers held the context for code changes, but now AI sessions hold that context.
-This can improve code review drastically, keeping both session history and informing future sessions of best practices.
+gx reviews a change with two independent models and a verifier, against a
+built-in rule pack, your own `REVIEW.md`, and the compiler, linters and tests
+your project already has. It also captures the coding session behind each push,
+so the context that produced a change is kept next to it.
 
 gx runs entirely on your machine. There is no account and no server: what it
 records stays in `~/.gx` (or `$GX_HOME`), and the only network calls it makes
@@ -26,13 +34,13 @@ archives if you would rather fetch them by hand.
 Build from source instead (needs Go, at the version in `go.mod`):
 
 ```bash
-git clone https://github.com/satoricorp/gx.git
+git clone https://github.com/joelachance/gx.git
 cd gx
 just install          # or: go build -o ~/.local/bin/gx ./cmd/gx
 ```
 
 Or take an archive from
-[GitHub Releases](https://github.com/satoricorp/gx/releases). Each holds
+[GitHub Releases](https://github.com/joelachance/gx/releases). Each holds
 `bin/gx` and the `bin/gx-mcp` MCP server:
 
 ```bash
@@ -88,6 +96,19 @@ Any single slot can be overridden: `GX_REVIEW_MODEL_A`, `GX_REVIEW_MODEL_B`,
 everything else on the OpenAI API, so a panel can mix the two.
 `GX_REVIEW_MODEL_B=off` reviews with one model, and `GX_REVIEW_AI=0` runs only
 the deterministic checks and your project's own linters and tests.
+
+## What a review reads
+
+| Source | When |
+| --- | --- |
+| The change, the files around it, and the repository | Always |
+| Built-in rules and your `REVIEW.md` | Always. The recommended rule pack ships in the binary; a `REVIEW.md` at the repo root adds your own rules and exceptions ([example](examples/REVIEW.md)) |
+| The project's compiler, linters and tests, plus a secret scan | Always, when the project has them |
+| Code index | Only after `gx index`, with TurboPuffer and OpenAI keys |
+| Captured sessions | Not yet. Sessions are captured into `~/.gx`, but this build has nothing that puts them where a review can read them |
+| Review-knowledge corpus | Off by default. No corpus ships with gx; `GX_REVIEW_KNOWLEDGE_NAMESPACE` names a TurboPuffer namespace you indexed yourself |
+
+Each review reports which of these it used and which were unavailable.
 
 ## Code index
 
@@ -218,7 +239,7 @@ Local data stays in `~/.gx` (or `$GX_HOME`).
 Bug reports, fixes, and docs are all welcome. For anything larger than a small
 fix, open a discussion or an issue first so we can agree on the shape before
 you write it. Questions go in
-[Discussions](https://github.com/satoricorp/gx/discussions).
+[Discussions](https://github.com/joelachance/gx/discussions).
 
 You need Go (the version in `go.mod`) and Git; [just](https://github.com/casey/just)
 and zsh for the build recipes; and [Bun](https://bun.sh) only for the MCP server
