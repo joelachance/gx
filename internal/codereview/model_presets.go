@@ -84,7 +84,8 @@ func PresetNames() []string {
 }
 
 // activeModelPreset is the panel this review runs: the one GX_REVIEW_MODELS
-// names, otherwise the one whose key is set, preferring Claude when both are.
+// names, otherwise Claude when there is an Anthropic key or a signed-in Claude
+// Code, and OpenAI only when an OpenAI key is all there is.
 // An unknown GX_REVIEW_MODELS is not an error here — the callers are model
 // resolvers deep in the review path, and the CLI validates the name up front
 // where a message can reach the user.
@@ -92,7 +93,7 @@ func activeModelPreset() modelPreset {
 	if preset, ok := modelPresets[strings.ToLower(strings.TrimSpace(os.Getenv("GX_REVIEW_MODELS")))]; ok {
 		return preset
 	}
-	if _, ok := anthropicCredentialFromEnv(); !ok && !claudeCodePreferred() && strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
+	if _, ok := anthropicCredentialFromEnv(); !ok && !ClaudeCodeAvailable() && strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
 		return modelPresets["openai"]
 	}
 	return modelPresets["anthropic"]

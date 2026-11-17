@@ -65,6 +65,19 @@ func claudeCodePreferred() bool {
 	return forced && ClaudeCodeAvailable()
 }
 
+// ClaudeCodeActive reports whether this review's Claude models will run
+// through Claude Code: the Claude panel is active and either no Anthropic key
+// is set or GX_REVIEW_CLAUDE_CODE=1 asks for the login anyway.
+func ClaudeCodeActive() bool {
+	if modelUsesOpenAI(activeModelPreset().ReviewerA) {
+		return false
+	}
+	if _, ok := anthropicCredentialFromEnv(); ok && !claudeCodePreferred() {
+		return false
+	}
+	return ClaudeCodeAvailable()
+}
+
 func newClaudeCodeTransport(binary string) *claudeCodeTransport {
 	return &claudeCodeTransport{binary: binary, run: runClaudeCode}
 }
