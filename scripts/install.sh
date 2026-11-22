@@ -137,6 +137,10 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   gx_init="$(printf '\033[1;36mgx init\033[0m')"
 fi
 echo ""
-printf '\tSet a model key to run AI reviews: %s\n' "$gx_api_key"
+if command -v claude >/dev/null 2>&1; then
+  printf '\tAI reviews can run on your Claude Code login; no key needed.\n'
+else
+  printf '\tFor AI reviews, sign in to Claude Code, or set a key: %s\n' "$gx_api_key"
+fi
 printf '\tRun %s in each repo to initialize gx.\n' "$gx_init"
 "$install_dir/gx" version
