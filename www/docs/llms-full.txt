@@ -139,14 +139,17 @@ That puts `gx`, `gx-mcp`, and shell completions in `~/.local/bin`, and verifies
 the archive against its published checksum first. To build from source instead,
 clone [the repository](https://github.com/joelachance/gx) and run `just install`.
 
-Review runs a model, so it needs **your** key:
+Review runs a model. If [Claude Code](https://claude.com/claude-code) is
+installed and signed in, there is nothing to set: gx runs its reviewers through
+`claude -p` on your Claude subscription, and `gx init` tells you so. Otherwise,
+use your own API key:
 
 ```bash
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY; not needed if Claude Code is signed in
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
 
-There is no gx account and no server in the path. The key goes to
-`api.anthropic.com` or `api.openai.com` and nowhere else.
+There is no gx account and no server in the path. Reviews go to Anthropic
+(through Claude Code or the API) or to the OpenAI API, and nowhere else.
 
 ## Basic usage
 
@@ -230,13 +233,18 @@ gx index        # index this repository's source for review retrieval
 gx version      # print the version
 ```
 
-`gx review` and `gx enhance` call a model, so they need an API key. There is
-no gx account: the key is yours, it goes straight to the provider, and nothing
-else is contacted.
+`gx review` and `gx enhance` call a model. With Claude Code signed in they run
+Claude through `claude -p` on your Claude subscription, with nothing to set.
+Otherwise they need your own API key. There is no gx account, and nothing else
+is contacted.
 
 ```bash
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY; not needed if Claude Code is signed in
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
+
+An Anthropic key wins over Claude Code, and Claude Code wins over an OpenAI key.
+`GX_REVIEW_CLAUDE_CODE=1` uses your Claude login even when a key is set; `=0`
+never uses it.
 
 `gx review` will also post its comment on the pull request if it can find a
 GitHub token -- `GH_TOKEN`, `GITHUB_TOKEN`, or the `gh` CLI's own login. None
@@ -528,8 +536,10 @@ CLI, so repo state stays on your machine. It exposes one tool: `gx_review`.
 
 ```bash
 curl -fsSL https://download.gx.run/install.sh | sh
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
 ```
+
+The review calls a model. With Claude Code signed in it runs on your Claude
+login and the server needs no key; otherwise see the `env` block below.
 
 ## Register with your agent
 
@@ -548,7 +558,6 @@ To register by hand, the stdio shape is:
     "gx": {
       "command": "/Users/you/.local/bin/gx-mcp",
       "env": {
-        "ANTHROPIC_API_KEY": "sk-ant-...",
         "GX_BINARY": "/Users/you/.local/bin/gx"
       }
     }
@@ -556,10 +565,12 @@ To register by hand, the stdio shape is:
 }
 ```
 
-Put the model key in that `env` block. An MCP server is spawned by your editor,
-not from a shell, so it inherits whatever environment the editor was launched
-with — which is usually not the one in your profile. A key that is missing there
-means no reviewer runs, and the tool says so.
+With Claude Code signed in, that is all it needs. To review on an API key
+instead, add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` to that `env` block. An MCP
+server is spawned by your editor, not from a shell, so it inherits whatever
+environment the editor was launched with — which is usually not the one in your
+profile. With no Claude Code login and no key there, no reviewer runs, and the
+tool says so.
 
 `GX_BINARY` is optional; the server finds the CLI in `~/.local/bin` or on
 `PATH` without it.
@@ -687,6 +698,29 @@ See [the CLI reference](/docs/cli#gx-review) for the full flag list.
 
 _Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes._
 
+
+## November 22, 2026 — v0.3.0
+
+**Review on your Claude subscription** — With Claude Code installed and signed
+in, `gx review` and `gx enhance` need no API key. gx runs its reviewers and
+verifier through `claude -p`, on your Claude login, as single completions with
+tools, MCP servers, settings and session saving switched off. An Anthropic key
+still wins when one is set; a signed-in Claude Code wins over an OpenAI key.
+`GX_REVIEW_CLAUDE_CODE=1` uses the login anyway, and `=0` never does. `gx init`
+now says which one reviews will use.
+
+**The MCP server starts on Apple Silicon again** — The `gx-mcp` in earlier
+macOS archives carried a code signature macOS rejects, so it was killed on
+launch and agents saw the server as disconnected. Archives are now re-signed.
+Reinstall to pick it up.
+
+**The repository moved to `joelachance/gx`** — The Go module path, links and
+badges follow it, so `go install github.com/joelachance/gx/cmd/gx@latest`
+works.
+
+**The docs say what a review reads** — Captured sessions stay in `~/.gx` and
+are not read by review yet, and the shared review-knowledge corpus went away
+with gx Cloud. The README and docs no longer claim otherwise.
 
 ## October 15, 2026
 
