@@ -59,6 +59,10 @@ func runInitRepoSetup(opts initSetupOptions) error {
 		}
 	}
 
+	if !opts.Quiet && opts.Out != nil {
+		fmt.Fprintln(opts.Out, labelValue("Review", initReviewModelStatus()))
+	}
+
 	if commands, err := installSlashCommands(); err != nil {
 		if !opts.Quiet && opts.Err != nil {
 			fmt.Fprintln(opts.Err, labelWarningValue("Command", err.Error()))
