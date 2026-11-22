@@ -17,14 +17,17 @@ That puts `gx`, `gx-mcp`, and shell completions in `~/.local/bin`, and verifies
 the archive against its published checksum first. To build from source instead,
 clone [the repository](https://github.com/joelachance/gx) and run `just install`.
 
-Review runs a model, so it needs **your** key:
+Review runs a model. If [Claude Code](https://claude.com/claude-code) is
+installed and signed in, there is nothing to set: gx runs its reviewers through
+`claude -p` on your Claude subscription, and `gx init` tells you so. Otherwise,
+use your own API key:
 
 ```bash
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY; not needed if Claude Code is signed in
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
 
-There is no gx account and no server in the path. The key goes to
-`api.anthropic.com` or `api.openai.com` and nowhere else.
+There is no gx account and no server in the path. Reviews go to Anthropic
+(through Claude Code or the API) or to the OpenAI API, and nowhere else.
 
 ## Basic usage
 

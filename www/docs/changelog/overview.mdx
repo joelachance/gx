@@ -3,6 +3,29 @@ title: "gx changelog: new features, updates, and fixes"
 description: "Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes."
 ---
 
+## November 22, 2026 — v0.3.0
+
+**Review on your Claude subscription** — With Claude Code installed and signed
+in, `gx review` and `gx enhance` need no API key. gx runs its reviewers and
+verifier through `claude -p`, on your Claude login, as single completions with
+tools, MCP servers, settings and session saving switched off. An Anthropic key
+still wins when one is set; a signed-in Claude Code wins over an OpenAI key.
+`GX_REVIEW_CLAUDE_CODE=1` uses the login anyway, and `=0` never does. `gx init`
+now says which one reviews will use.
+
+**The MCP server starts on Apple Silicon again** — The `gx-mcp` in earlier
+macOS archives carried a code signature macOS rejects, so it was killed on
+launch and agents saw the server as disconnected. Archives are now re-signed.
+Reinstall to pick it up.
+
+**The repository moved to `joelachance/gx`** — The Go module path, links and
+badges follow it, so `go install github.com/joelachance/gx/cmd/gx@latest`
+works.
+
+**The docs say what a review reads** — Captured sessions stay in `~/.gx` and
+are not read by review yet, and the shared review-knowledge corpus went away
+with gx Cloud. The README and docs no longer claim otherwise.
+
 ## October 15, 2026
 
 **gx runs on your own key, with no account** — There is no gx Cloud any more and

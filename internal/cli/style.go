@@ -109,6 +109,19 @@ func rootInferenceStatusLine() string {
 	return success("●") + " " + value("Using "+creds.Provider+": "+maskedAPIKey(creds.APIKey))
 }
 
+// initReviewModelStatus is gx init's one line on what reviews will run on, so
+// someone with Claude Code learns their subscription is used without reading
+// the docs, and someone with nothing learns what to set.
+func initReviewModelStatus() string {
+	if codereview.ClaudeCodeActive() {
+		return success("ok") + ": Claude Code, on your Claude login"
+	}
+	if creds, ok := inference.Resolve(); ok {
+		return success("ok") + ": " + creds.Provider + " API key (" + creds.Source + ")"
+	}
+	return danger("no model") + ": sign in to Claude Code, or set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+}
+
 func maskedAPIKey(key string) string {
 	key = strings.TrimSpace(key)
 	if len(key) < 2 {

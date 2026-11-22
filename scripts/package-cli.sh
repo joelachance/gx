@@ -44,6 +44,12 @@ echo "Building gx-mcp for ${goos}/${goarch}"
   fi
 )
 chmod 755 "$stage_dir/bin/gx-mcp"
+# bun's compiled Mach-O carries a signature macOS rejects, so Apple Silicon
+# kills gx-mcp on launch (exit 137). An ad-hoc re-sign makes it valid.
+if [[ "$goos" == "darwin" ]]; then
+  codesign --force --sign - "$stage_dir/bin/gx-mcp"
+  codesign --verify "$stage_dir/bin/gx-mcp"
+fi
 
 env -u GOOS -u GOARCH -u CGO_ENABLED go run ./cmd/gx-gen-completions "$stage_dir/completions/gx.bash" "$stage_dir/completions/_gx"
 

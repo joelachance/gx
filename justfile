@@ -33,6 +33,7 @@ test:
 # Build the MCP: xmcp JS output plus the standalone dist/gx-mcp binary.
 mcp-build:
   cd mcp && bun install && bun run build
+  command -v codesign >/dev/null 2>&1 && codesign --force --sign - mcp/dist/gx-mcp || true
 
 # Publish @satoricorp/gx to npm. prepublishOnly rebuilds and tests first.
 # CI equivalent: push a tag like mcp-v0.1.0 (see .github/workflows/mcp.yml).
