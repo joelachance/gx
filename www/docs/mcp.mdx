@@ -10,8 +10,10 @@ CLI, so repo state stays on your machine. It exposes one tool: `gx_review`.
 
 ```bash
 curl -fsSL https://download.gx.run/install.sh | sh
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY — the review calls a model
 ```
+
+The review calls a model. With Claude Code signed in it runs on your Claude
+login and the server needs no key; otherwise see the `env` block below.
 
 ## Register with your agent
 
@@ -30,7 +32,6 @@ To register by hand, the stdio shape is:
     "gx": {
       "command": "/Users/you/.local/bin/gx-mcp",
       "env": {
-        "ANTHROPIC_API_KEY": "sk-ant-...",
         "GX_BINARY": "/Users/you/.local/bin/gx"
       }
     }
@@ -38,10 +39,12 @@ To register by hand, the stdio shape is:
 }
 ```
 
-Put the model key in that `env` block. An MCP server is spawned by your editor,
-not from a shell, so it inherits whatever environment the editor was launched
-with — which is usually not the one in your profile. A key that is missing there
-means no reviewer runs, and the tool says so.
+With Claude Code signed in, that is all it needs. To review on an API key
+instead, add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` to that `env` block. An MCP
+server is spawned by your editor, not from a shell, so it inherits whatever
+environment the editor was launched with — which is usually not the one in your
+profile. With no Claude Code login and no key there, no reviewer runs, and the
+tool says so.
 
 `GX_BINARY` is optional; the server finds the CLI in `~/.local/bin` or on
 `PATH` without it.

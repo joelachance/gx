@@ -18,7 +18,7 @@ so the context that produced a change is kept next to it.
 
 gx runs entirely on your machine. There is no account and no server: what it
 records stays in `~/.gx` (or `$GX_HOME`), and the only network calls it makes
-are the ones you give it a key for.
+are the ones you set up: your Claude Code login, or an API key you give it.
 
 ## Install
 
@@ -209,11 +209,13 @@ gx version --json
 ## MCP server
 
 `gx-mcp` exposes `gx_review` to coding agents over stdio. `gx init` registers
-it with Claude Code, Cursor and Codex when they are installed. An MCP server
-inherits its host application's environment, not your shell's, so put
-`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the server config's `env` block.
-`GX_BINARY` points it at a specific `gx`. The tool is read-only: it never
-initializes a repository and never comments on a pull request.
+it with Claude Code, Cursor and Codex when they are installed. With Claude Code
+signed in, the server needs no configuration: reviews run on your Claude login.
+To use an API key instead, put `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the
+server config's `env` block, because an MCP server inherits its host
+application's environment, not your shell's. `GX_BINARY` points it at a specific
+`gx`. The tool is read-only: it never initializes a repository and never
+comments on a pull request.
 
 To build it from source, run `just mcp-build` (needs [Bun](https://bun.sh)).
 

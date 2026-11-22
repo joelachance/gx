@@ -18,13 +18,18 @@ gx index        # index this repository's source for review retrieval
 gx version      # print the version
 ```
 
-`gx review` and `gx enhance` call a model, so they need an API key. There is
-no gx account: the key is yours, it goes straight to the provider, and nothing
-else is contacted.
+`gx review` and `gx enhance` call a model. With Claude Code signed in they run
+Claude through `claude -p` on your Claude subscription, with nothing to set.
+Otherwise they need your own API key. There is no gx account, and nothing else
+is contacted.
 
 ```bash
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY; not needed if Claude Code is signed in
+export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY
 ```
+
+An Anthropic key wins over Claude Code, and Claude Code wins over an OpenAI key.
+`GX_REVIEW_CLAUDE_CODE=1` uses your Claude login even when a key is set; `=0`
+never uses it.
 
 `gx review` will also post its comment on the pull request if it can find a
 GitHub token -- `GH_TOKEN`, `GITHUB_TOKEN`, or the `gh` CLI's own login. None
