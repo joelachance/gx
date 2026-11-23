@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import packageJson from "../package.json";
 import gxReview, { metadata as reviewMetadata, schema as reviewSchema } from "./tools/gx-review";
 
 type ToolModule = {
@@ -66,7 +67,7 @@ async function main() {
   const server = new McpServer(
     {
       name: "gx MCP",
-      version: "0.1.0",
+      version: packageJson.version,
       description: "gx MCP stdio server",
     },
     { instructions },

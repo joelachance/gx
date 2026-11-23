@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 )
 
 // claudeCodeEnv switches the Claude Code wire: "1" uses it even when an
@@ -39,7 +41,8 @@ func claudeCodeMode() (forced, disabled bool) {
 	return false, false
 }
 
-// claudeCodeBinary finds the Claude Code CLI, unless the wire is switched off.
+// claudeCodeBinary finds a signed-in Claude Code CLI, unless the wire is
+// switched off.
 func claudeCodeBinary() (string, bool) {
 	if _, disabled := claudeCodeMode(); disabled {
 		return "", false
@@ -48,7 +51,36 @@ func claudeCodeBinary() (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return path, true
+	return path, claudeCodeLoggedIn(path)
+}
+
+var (
+	claudeCodeLoginMu    sync.Mutex
+	claudeCodeLoginCache = map[string]bool{}
+)
+
+// claudeCodeLoggedIn asks the CLI whether it is signed in, once per binary per
+// process; panel selection and every leg ask. A claude that is installed but
+// signed out would otherwise take the review from an API key and fail every
+// call. Anything but a clear yes, including a CLI too old to answer, is no.
+func claudeCodeLoggedIn(binary string) bool {
+	claudeCodeLoginMu.Lock()
+	defer claudeCodeLoginMu.Unlock()
+	if ok, seen := claudeCodeLoginCache[binary]; seen {
+		return ok
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "auth", "status", "--json")
+	cmd.Dir = os.TempDir()
+	cmd.Env = claudeCodeEnviron(os.Environ())
+	out, err := cmd.Output()
+	var status struct {
+		LoggedIn bool `json:"loggedIn"`
+	}
+	ok := err == nil && json.Unmarshal(bytes.TrimSpace(out), &status) == nil && status.LoggedIn
+	claudeCodeLoginCache[binary] = ok
+	return ok
 }
 
 // ClaudeCodeAvailable reports whether a Claude model can run through Claude
