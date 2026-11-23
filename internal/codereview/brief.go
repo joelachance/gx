@@ -713,7 +713,7 @@ func publisherForContextSnippet(snippet ContextSnippet) string {
 	switch strings.TrimSpace(snippet.Kind) {
 	case "domain_doc", "repo_doc", "adr", "dependency_manifest", "changed_file", "module_file", "code_quality_file", "repo_inventory", "repo_source_file":
 		return "local"
-	case "indexed_session", "session":
+	case "indexed_session", "session_context", "session":
 		return "session"
 	case "indexed_code":
 		return "indexed"
@@ -742,7 +742,7 @@ func sourceRefKind(snippet ContextSnippet) string {
 	switch strings.TrimSpace(snippet.Kind) {
 	case "indexed_code":
 		return "code"
-	case "indexed_session":
+	case "indexed_session", "session_context":
 		return "session"
 	case "review_resource":
 		return "resource"

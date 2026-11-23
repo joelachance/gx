@@ -72,6 +72,17 @@ func (p *Parser) ParseBytes(data []byte, sourcePath, repoRoot string) ([]capture
 	return events, nil
 }
 
+// claudeMessageRole is the line's own type when it is a conversation turn.
+// Claude Code also writes copies of API requests (type "api-request-blob")
+// whose messages carry role "user"; those are not something the user typed.
+func claudeMessageRole(raw map[string]json.RawMessage) string {
+	switch role := rawString(raw["type"]); role {
+	case "user", "assistant":
+		return role
+	}
+	return ""
+}
+
 func parseClaudeLine(raw map[string]json.RawMessage, sessionID, repoRoot string) ([]capture.SessionEvent, error) {
 	var events []capture.SessionEvent
 	ts := parseTimestamp(raw["timestamp"])
@@ -88,7 +99,20 @@ func parseClaudeLine(raw map[string]json.RawMessage, sessionID, repoRoot string)
 	model := rawString(msg["model"])
 	var content []json.RawMessage
 	if err := json.Unmarshal(msg["content"], &content); err != nil {
-		return events, nil
+		// A typed user turn is usually written as a plain string, not blocks.
+		var text string
+		if json.Unmarshal(msg["content"], &text) != nil || strings.TrimSpace(text) == "" {
+			return events, nil
+		}
+		return append(events, capture.SessionEvent{
+			SessionID:     sessionID,
+			Tool:          capture.ToolClaude,
+			Model:         model,
+			TS:            ts,
+			Kind:          capture.KindMessage,
+			PromptContext: truncate(text, 512),
+			Role:          claudeMessageRole(raw),
+		}), nil
 	}
 
 	for _, blockRaw := range content {
@@ -145,6 +169,7 @@ func parseClaudeLine(raw map[string]json.RawMessage, sessionID, repoRoot string)
 				TS:            ts,
 				Kind:          capture.KindMessage,
 				PromptContext: truncate(rawString(block["text"]), 512),
+				Role:          claudeMessageRole(raw),
 				Raw:           cloneRaw(block),
 			})
 		case "tool_result":

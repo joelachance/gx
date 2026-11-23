@@ -38,6 +38,10 @@ type SessionEvent struct {
 	Command string
 	Raw     map[string]json.RawMessage
 
+	// Role is who wrote a message event, "user" or "assistant", when the
+	// transcript records it. Review quotes only what the user typed.
+	Role string
+
 	// Cwd is the working directory the agent was in when this event happened,
 	// when the tool records one. It is what binds a session to a repository —
 	// and because Claude writes it per entry rather than once per session, a
