@@ -84,6 +84,9 @@ func DenyNetwork() func() []string {
 	// A signed-in Claude Code is a credential too: with no key set, review
 	// would run the developer's `claude` and spend their subscription.
 	_ = os.Setenv("GX_REVIEW_CLAUDE_CODE", "0")
+	// Review reads agent transcripts from the developer's home directory; a
+	// test must not depend on what is in it.
+	_ = os.Setenv("GX_REVIEW_SESSION_CONTEXT", "0")
 	// On-disk credentials are credentials too. A developer's ~/.gx holds a
 	// live CLI session (credentials.json) and upload auth (upload.json), and a
 	// path that authenticates from disk — cloud-mode review retrieval does —

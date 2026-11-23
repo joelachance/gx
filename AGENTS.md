@@ -17,9 +17,9 @@ Install with `just install`, which builds with the version stamped, codesigns on
 macOS, and installs completions. A bare `go build` works but leaves `gx version`
 printing `dev`, which is the tell for an unstamped build.
 
-There is no gx Cloud and no download site: gx runs entirely on the machine with
-the user's own model keys, and releases are GitHub Release assets built on `v*`
-tags.
+There is no gx Cloud: gx runs entirely on the machine with the user's Claude
+Code login or own model keys. Releases are built on `v*` tags and published to
+GitHub Releases and to download.gx.run, which the install script reads.
 
 ## Tests: seed through the writer production uses, or do not seed
 

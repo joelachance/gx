@@ -13,8 +13,9 @@ Local code review for changes written with AI agents.
 
 gx reviews a change with two independent models and a verifier, against a
 built-in rule pack, your own `REVIEW.md`, and the compiler, linters and tests
-your project already has. It also captures the coding session behind each push,
-so the context that produced a change is kept next to it.
+your project already has. It also reads the coding session that wrote the
+change, so the reviewers know what you asked the agent for and can judge the
+change against it.
 
 gx runs entirely on your machine. There is no account and no server: what it
 records stays in `~/.gx` (or `$GX_HOME`), and the only network calls it makes
@@ -37,6 +38,12 @@ Build from source instead (needs Go, at the version in `go.mod`):
 git clone https://github.com/joelachance/gx.git
 cd gx
 just install          # or: go build -o ~/.local/bin/gx ./cmd/gx
+```
+
+Or with Go alone (no `gx-mcp`):
+
+```bash
+go install github.com/joelachance/gx/cmd/gx@latest
 ```
 
 Or take an archive from
@@ -115,7 +122,7 @@ the deterministic checks and your project's own linters and tests.
 | Built-in rules and your `REVIEW.md` | Always. The recommended rule pack ships in the binary; a `REVIEW.md` at the repo root adds your own rules and exceptions ([example](examples/REVIEW.md)) |
 | The project's compiler, linters and tests, plus a secret scan | Always, when the project has them |
 | Code index | Only after `gx index`, with TurboPuffer and OpenAI keys |
-| Captured sessions | Not yet. Sessions are captured into `~/.gx`, but this build has nothing that puts them where a review can read them |
+| Agent sessions that wrote the change | Always, when one did. gx reads the Claude Code, Codex and Cursor transcripts on this machine, matches their edits to the lines under review, and gives the reviewers what you asked each matching session, in your own words. It works before you push. `GX_REVIEW_SESSION_CONTEXT=0` turns it off |
 | Review-knowledge corpus | Off by default. No corpus ships with gx; `GX_REVIEW_KNOWLEDGE_NAMESPACE` names a TurboPuffer namespace you indexed yourself |
 
 Each review reports which of these it used and which were unavailable.
@@ -229,7 +236,9 @@ secret formats from session events as it does.
 What leaves your machine, and only with credentials you set:
 
 - **Reviews.** `gx review` and `gx enhance` send the change and its review
-  context to the model provider for each model: Anthropic (through Claude
+  context to the model provider for each model. That context includes your
+  prompts from the agent sessions that wrote the change, with known secret
+  formats redacted. It goes to Anthropic (through Claude
   Code or the API) or the OpenAI API.
 - **Code index.** With TurboPuffer and OpenAI keys set, `gx index` and review
   send code chunks to OpenAI for embeddings and to TurboPuffer for storage and
