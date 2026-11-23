@@ -720,7 +720,7 @@ See [the CLI reference](/docs/cli#gx-review) for the full flag list.
 _Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes._
 
 
-## Unreleased
+## November 23, 2026 — v0.3.2
 
 **Reviews read the session that wrote the change** — `gx review` finds the
 Claude Code, Codex and Cursor sessions whose edits wrote the lines under review,
