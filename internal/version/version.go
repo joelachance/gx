@@ -29,13 +29,28 @@ func Current() string {
 	if revision := vcsRevision(); revision != "" {
 		return revision
 	}
-	return strings.TrimSpace(Version)
+	return releaseVersion()
+}
+
+// releaseVersion is the -X stamped Version, or for an unstamped build the
+// module version Go records on `go install module@version`.
+func releaseVersion() string {
+	version := strings.TrimSpace(Version)
+	if version != "dev" && version != "" {
+		return version
+	}
+	if info, ok := readBuildInfo(); ok && info != nil {
+		if module := strings.TrimSpace(info.Main.Version); module != "" && module != "(devel)" {
+			return module
+		}
+	}
+	return version
 }
 
 func BuildInfo() Info {
 	info := Info{
 		Version: strings.TrimSpace(Current()),
-		Release: strings.TrimSpace(Version),
+		Release: releaseVersion(),
 	}
 	if buildInfo, ok := readBuildInfo(); ok && buildInfo != nil {
 		info.GoVersion = strings.TrimSpace(buildInfo.GoVersion)

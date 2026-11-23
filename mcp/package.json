@@ -1,6 +1,6 @@
 {
   "name": "@satoricorp/gx",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "gx MCP server (stdio): gx_review context from the local gx CLI.",
   "license": "AGPL-3.0-only",
   "author": "Joe LaChance",

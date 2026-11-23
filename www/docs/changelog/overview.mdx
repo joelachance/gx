@@ -3,6 +3,22 @@ title: "gx changelog: new features, updates, and fixes"
 description: "Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes."
 ---
 
+## November 23, 2026 — v0.3.1
+
+**A signed-out Claude Code no longer takes the review** — v0.3.0 picked Claude
+Code whenever `claude` was on `PATH`, signed in or not. With an OpenAI key set
+and Claude Code signed out, reviews then ran no model at all instead of the
+OpenAI panel. gx now asks `claude auth status` first and uses Claude Code only
+when it is signed in.
+
+**The installer mentions your Claude login** — Its last lines told everyone to
+export `ANTHROPIC_API_KEY`. With Claude Code installed, it now says no key is
+needed.
+
+**Versions read right** — `go install github.com/joelachance/gx/cmd/gx@v0.3.1`
+reports `v0.3.1` instead of `dev`, and the MCP server reports the release
+version to clients instead of `0.1.0`.
+
 ## November 22, 2026 — v0.3.0
 
 **Review on your Claude subscription** — With Claude Code installed and signed

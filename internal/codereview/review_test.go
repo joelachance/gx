@@ -1085,6 +1085,9 @@ func initRepo(t *testing.T) string {
 	runGit(t, root, "init")
 	runGit(t, root, "config", "user.name", "Test User")
 	runGit(t, root, "config", "user.email", "test@example.com")
+	// git commit starts `git maintenance run --auto --detach`, which can still be
+	// writing in .git when the test ends and TempDir cleanup fails on it.
+	runGit(t, root, "config", "maintenance.auto", "false")
 	return root
 }
 
