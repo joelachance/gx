@@ -83,3 +83,22 @@ func stubVersion(t *testing.T, version string, info *debug.BuildInfo, ok bool) f
 		readBuildInfo = prevReadBuildInfo
 	}
 }
+
+// `go install github.com/joelachance/gx/cmd/gx@v0.3.0` embeds no VCS metadata
+// and no -X stamp, only the module version; it used to print "dev".
+func TestModuleInstallReportsTheModuleVersion(t *testing.T) {
+	restore := stubVersion(t, "dev", &debug.BuildInfo{Main: debug.Module{Path: "github.com/joelachance/gx", Version: "v0.3.0"}}, true)
+	defer restore()
+	if got := Current(); got != "v0.3.0" {
+		t.Fatalf("Current() = %q, want v0.3.0", got)
+	}
+	if got := BuildInfo().Release; got != "v0.3.0" {
+		t.Fatalf("BuildInfo().Release = %q, want v0.3.0", got)
+	}
+
+	restore()
+	restore = stubVersion(t, "dev", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, true)
+	if got := Current(); got != "dev" {
+		t.Fatalf("a local build: Current() = %q, want dev", got)
+	}
+}

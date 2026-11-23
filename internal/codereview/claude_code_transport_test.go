@@ -3,19 +3,26 @@ package codereview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// fakeClaudeOnPath puts an executable named claude first on PATH. It is never
-// run: the tests only need LookPath to find one.
+// fakeClaudeOnPath puts a signed-in claude first on PATH. It answers only
+// `auth status`; a review call would fail.
 func fakeClaudeOnPath(t *testing.T) string {
+	t.Helper()
+	return fakeClaudeWithLogin(t, true)
+}
+
+func fakeClaudeWithLogin(t *testing.T, loggedIn bool) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "claude")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+	script := fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\": %t}'; exit 0; fi\nexit 1\n", loggedIn)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -82,6 +89,30 @@ func TestClaudeCodeWinsOverAnOpenAIOnlyKey(t *testing.T) {
 	t.Setenv(claudeCodeEnv, "0")
 	if !modelUsesOpenAI(activeModelPreset().ReviewerA) {
 		t.Fatalf("with %s=0 an OpenAI-only key must pick the OpenAI panel", claudeCodeEnv)
+	}
+}
+
+// A claude on PATH that is not signed in must not take the review: before the
+// login check, an OpenAI-key user with a signed-out Claude Code got a review
+// with no model at all instead of the OpenAI panel.
+func TestSignedOutClaudeCodeIsNotUsed(t *testing.T) {
+	fakeClaudeWithLogin(t, false)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	t.Setenv("GX_REVIEW_MODELS", "")
+	t.Setenv(claudeCodeEnv, "")
+
+	if ClaudeCodeAvailable() || ClaudeCodeActive() {
+		t.Fatal("a signed-out Claude Code reported as available")
+	}
+	if a := activeModelPreset().ReviewerA; !modelUsesOpenAI(a) {
+		t.Fatalf("panel reviewer A = %q, want the OpenAI panel", a)
+	}
+
+	t.Setenv("OPENAI_API_KEY", "")
+	if _, err := transportForModel("claude-haiku-4-5"); err == nil || !strings.Contains(err.Error(), "sign in to Claude Code") {
+		t.Fatalf("signed out with no keys: err = %v, want the sign-in hint", err)
 	}
 }
 

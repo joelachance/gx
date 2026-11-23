@@ -50,7 +50,7 @@ install -m 755 gx/bin/gx-mcp ~/.local/bin/gx-mcp
 ```
 
 gx's git hooks look for the binary at `~/.local/bin/gx`, then on `PATH`.
-Upgrade the same way, or `gx update` if your build has a download host.
+Upgrade the same way.
 
 ## Get started
 
