@@ -3,6 +3,20 @@ title: "gx changelog: new features, updates, and fixes"
 description: "Changelog for gx covering new features, product updates, CLI improvements, review workflow changes, and bug fixes."
 ---
 
+## Unreleased
+
+**Reviews read the session that wrote the change** — `gx review` finds the
+Claude Code, Codex and Cursor sessions whose edits wrote the lines under review,
+by reading the transcripts on this machine with the same matching the pre-push
+hook uses, and gives the reviewers what you asked each one, in your own words.
+It works before you push, which is when most reviews run. The old session
+retriever searched a TurboPuffer namespace that nothing writes any more and is
+gone. `GX_REVIEW_SESSION_CONTEXT=0` turns this off.
+
+**Captured sessions keep your typed prompts** — Claude Code writes most typed
+turns as plain text rather than content blocks, and capture was dropping them,
+keeping only the occasional turn written as blocks.
+
 ## November 23, 2026 — v0.3.1
 
 **A signed-out Claude Code no longer takes the review** — v0.3.0 picked Claude

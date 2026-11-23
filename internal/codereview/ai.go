@@ -631,6 +631,7 @@ func prioritizeContextSnippets(snippets []ContextSnippet) []ContextSnippet {
 var retrievedSnippetKinds = map[string]bool{
 	"indexed_code":        true,
 	"indexed_session":     true,
+	"session_context":     true,
 	"code_review_history": true,
 	"code_review_summary": true,
 	"review_resource":     true,
@@ -748,7 +749,7 @@ func contextSnippetPriority(snippet ContextSnippet) int {
 	case "repo_source_file", "module_file", "changed_file":
 		return priorityCheckoutSource
 
-	case "indexed_session", "session_transcript", "lexical_reach":
+	case "indexed_session", "session_context", "session_transcript", "lexical_reach":
 		return prioritySessionEvidence
 	case "code_quality_file":
 		return priorityQualityFile

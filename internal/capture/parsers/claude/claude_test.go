@@ -106,3 +106,31 @@ func TestParseClaude_KeepsBashCommandText(t *testing.T) {
 		t.Fatal("a command event reports as an edit event; the two carry different evidence")
 	}
 }
+
+// Claude Code writes the user's typed turns with content as a plain string;
+// only some turns use a list of blocks. Both are the user's words.
+func TestParseClaude_KeepsUserTurnsWrittenAsAString(t *testing.T) {
+	parser := &claude.Parser{}
+	raw := strings.Join([]string{
+		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"first ask, as blocks"}]},"timestamp":"2025-06-01T10:00:00.000Z","sessionId":"sess-1"}`,
+		`{"type":"user","message":{"role":"user","content":"make sessions work in reviews"},"timestamp":"2025-06-01T10:01:00.000Z","sessionId":"sess-1"}`,
+		`{"type":"assistant","message":{"role":"assistant","model":"claude","content":[{"type":"text","text":"On it."}]},"timestamp":"2025-06-01T10:02:00.000Z","sessionId":"sess-1"}`,
+	}, "\n")
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	if err := os.WriteFile(path, []byte(raw+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	events, err := parser.ParseFile(path, "/tmp/repo")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+	var user []string
+	for _, ev := range events {
+		if ev.Kind == capture.KindMessage && ev.Role == "user" {
+			user = append(user, ev.PromptContext)
+		}
+	}
+	if strings.Join(user, "|") != "first ask, as blocks|make sessions work in reviews" {
+		t.Fatalf("user turns = %q, want both, in order", user)
+	}
+}
