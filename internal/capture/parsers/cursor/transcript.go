@@ -107,6 +107,7 @@ func parseTranscriptLine(raw map[string]json.RawMessage, sessionID, model, repoR
 				TS:            ts,
 				Kind:          capture.KindMessage,
 				PromptContext: truncate(text, 512),
+				Role:          rawString(msg["role"]),
 				Raw:           cloneRaw(block),
 			})
 		case "tool_result":

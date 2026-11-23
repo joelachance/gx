@@ -140,6 +140,18 @@ to advisory.
 If nothing was found, `gx review` says so. "Nothing was reviewed" is its own
 outcome and never counts as a clean pass.
 
+### The session behind the change
+
+Whatever is under review, gx looks for the agent sessions that wrote it: it
+reads the Claude Code, Codex and Cursor transcripts on this machine and matches
+their edits to the added lines. For each matching session the reviewers get
+what you asked it, in your own words (your first two prompts and your last six),
+with known secret formats redacted, so a change can be judged against what was
+asked. The report's evidence line `agent sessions` says how many it found. This
+reads live transcripts, so it works before you push.
+`GX_REVIEW_SESSION_CONTEXT=0` turns it off; `GX_REVIEW_SESSION_CONTEXT_TOP_K`
+sets how many sessions are passed (default 3, 6 with `--deep`).
+
 ### Checks that are not the model
 
 Alongside the reviewers, `gx review` runs whatever the project already has, and

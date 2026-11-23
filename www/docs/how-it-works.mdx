@@ -39,10 +39,17 @@ Agent-written code breaks two of Git's assumptions:
 
 This is the honest boundary, and it is worth being explicit about it.
 
-Capturing a session needs nothing. Reading one back during `gx review` needs an
-index to search, and gx searches a vector store. `gx index` writes code to that
-store and nothing else: this build has no step that indexes captured sessions,
-so they stay in `~/.gx` and a review does not read them yet. The shared
+Capturing a session needs nothing, and neither does reading one back. At review
+time gx reads the Claude Code, Codex and Cursor transcripts on this machine,
+with the same discovery and matching the pre-push hook uses, and finds the
+sessions whose edits wrote the lines under review. The reviewers get what you
+asked each of those sessions, in your own words, with known secret formats
+redacted, and judge the change against it. Because it reads the live
+transcripts, this works before you push. Codex transcripts record edits but no
+prompts, so a Codex session is credited without a quote.
+
+Code search is the part that needs an index: `gx index` writes the
+repository's code to a vector store, and nothing else does. The shared
 review-knowledge corpus went away with gx Cloud; that retriever stays off unless
 `GX_REVIEW_KNOWLEDGE_NAMESPACE` names a corpus you indexed yourself. A source
 that is unavailable is listed as such in the review, which then runs without it.
@@ -56,7 +63,7 @@ So in a stock local install:
 | Built-in rules and your repo's `REVIEW.md` | Always |
 | Indexed code | Only after `gx index` |
 | Review knowledge | Only with your own corpus configured |
-| Captured sessions | Not yet: captured locally, not read by review |
+| Agent sessions that wrote the change | Always, when one did |
 
 Everything the review *decides* is available either way. What an index buys is
 recall: the ability to answer "where else does this pattern appear". `gx index`
@@ -110,4 +117,6 @@ local Git excludes so it never shows up as a change. See the
 The hooks stamp plain `git commit` messages and never block a push. Your
 repository does not become gx-specific in any way that outlives the binary: stop
 using gx tomorrow and your branches, commits, and pull requests are ordinary
-Git. Session capture writes to `~/.gx` and goes nowhere else.
+Git. Session capture writes to `~/.gx` and goes nowhere else; a review sends
+only your redacted prompts from the matching sessions, and only to the model
+provider.
